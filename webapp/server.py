@@ -376,6 +376,13 @@ class Handler(BaseHTTPRequestHandler):
                     if body.get("chain"):
                         record_account(con, body["chain"], body.get("signedIn"), body.get("balance"), body.get("tier"))
                 return self._send(200, {"ok": True})
+            if p == "/api/searches/delete":
+                ids = [int(i) for i in (body.get("ids") or [])][:500]
+                with LOCK, db() as con:
+                    for i in ids:
+                        for table, col in (("results", "search_id"), ("pages", "search_id"), ("searches", "id")):
+                            con.execute(f"DELETE FROM {table} WHERE {col}=?", (i,))
+                return self._send(200, {"ok": True, "deleted": len(ids)})
             if p == "/api/admin/key":
                 token = str(body.get("key", "")).strip()
                 if not re.fullmatch(r"[A-Za-z0-9_]{20,255}", token):

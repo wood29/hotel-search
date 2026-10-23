@@ -78,7 +78,9 @@ tr:last-child td { border-bottom: 0; }
 .history { display: flex; flex-direction: column; background: var(--card); border-radius: var(--radius); overflow: hidden; }
 .history button { background: transparent; color: var(--text); font-weight: 400; text-align: left; border-radius: 0;
                   padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; }
-.history button:last-child { border-bottom: 0; }
+.history .hist-row { border-bottom: 1px solid var(--line); }
+.history .hist-row:last-child { border-bottom: 0; }
+.history .hist-row > button { border-bottom: 0; }
 .empty-note { color: var(--muted); font-size: 14px; padding: 12px 16px; }
 @media (max-width: 760px) {
   .form { grid-template-columns: 1fr 1fr; }
@@ -110,3 +112,14 @@ td.name a:hover { color: var(--accent); border-color: var(--accent); }
 .settings details { margin: 8px 0; }
 .settings summary { cursor: pointer; }
 .settings .row input[type="password"] { flex: 1; min-width: 0; }
+
+/* Recent searches: edit and delete */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+button.link { background: none; color: var(--accent); padding: 4px 6px; font-weight: 600; }
+.hist-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 10px; }
+.hist-row { display: flex; align-items: center; gap: 10px; }
+.hist-row .hist-pick { margin-left: 16px; }
+.hist-row > button { flex: 1; min-width: 0; }
+.hist-pick { width: 20px; height: 20px; flex: none; }
+button.danger { background: var(--bad); color: #fff; }
+button.danger:disabled { opacity: .45; }

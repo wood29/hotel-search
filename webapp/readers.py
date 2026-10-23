@@ -57,7 +57,8 @@ def first_match(text, patterns):
 def account_marriott(text):
     head = text[:1500]
     signed_in = True if "Hello," in head else False if re.search(r"Sign In or Join|Sign in to your account", head) else None
-    bal = rx(r"Hello,[\s\S]{0,200}?@N\s*Points").search(text)
+    # Points sit next to "Hello, Michael" — after it on a computer, before it on an iPad.
+    bal = rx(r"Hello,[\s\S]{0,200}?@N\s*Points").search(text) or rx(r"@N\s*Points\b[^\n]{0,40}\n\s*Hello,").search(head)
     tier = first_match(text, [r"\b((?:Silver|Gold|Platinum|Titanium|Ambassador) Elite)\b"]) if signed_in else None
     return {"signedIn": signed_in, "balance": num(bal[1]) if signed_in and bal else None, "tier": tier}
 

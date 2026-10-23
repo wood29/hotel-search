@@ -101,7 +101,12 @@
   </section>
 
   <section class="section">
-    <div class="section-head"><h2>Recent searches</h2></div>
+    <div class="section-head"><h2>Recent searches</h2>
+      <div class="head-actions"><button id="histEdit" type="button" class="link">Edit</button></div></div>
+    <div id="histBar" class="hist-bar" hidden>
+      <label class="check"><input id="histAll" type="checkbox"> Select all</label>
+      <button id="histDel" type="button" class="danger" disabled>Delete selected</button>
+    </div>
     <div id="history" class="history"></div>
   </section>
 </main>

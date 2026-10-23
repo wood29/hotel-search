@@ -268,13 +268,45 @@ async function loadPoints() {
 }
 
 // ---------- History ----------
+let histEditing = false;
 async function loadHistory() {
-  const list = await api("/api/searches?limit=10").catch(() => []);
+  const list = await api("/api/searches?limit=30").catch(() => []);
+  $("histEdit").hidden = !list.length;
+  if (!list.length) { histEditing = false; $("histBar").hidden = true; }
   $("history").innerHTML = list.length ? list.map((s) => `
-    <button type="button" data-id="${s.id}"><span>${esc(s.params.city)}, ${esc(s.params.country)} · ${fmtDates(s.params)} · ${s.params.adults} guests</span>
-    <span class="muted">${ago(s.created)}</span></button>`).join("") : '<div class="empty-note">Your searches will appear here.</div>';
-  $("history").querySelectorAll("button[data-id]").forEach((b) => b.onclick = () => { loadSearch(Number(b.dataset.id), true); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    <div class="hist-row">
+      ${histEditing ? `<input type="checkbox" class="hist-pick" data-id="${s.id}" aria-label="Select this search">` : ""}
+      <button type="button" data-id="${s.id}"><span>${esc(s.params.city)}, ${esc(s.params.country)} · ${fmtDates(s.params)} · ${s.params.adults} guests</span>
+      <span class="muted">${ago(s.created)}</span></button>
+    </div>`).join("") : '<div class="empty-note">Your searches will appear here.</div>';
+  $("history").querySelectorAll("button[data-id]").forEach((b) => b.onclick = () => {
+    if (histEditing) { const c = b.parentElement.querySelector(".hist-pick"); c.checked = !c.checked; histPicked(); return; }
+    loadSearch(Number(b.dataset.id), true); window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  $("history").querySelectorAll(".hist-pick").forEach((c) => c.onchange = histPicked);
+  histPicked();
 }
+function histPicked() {
+  const picks = [...document.querySelectorAll(".hist-pick")];
+  const n = picks.filter((c) => c.checked).length;
+  $("histDel").disabled = !n;
+  $("histDel").textContent = n ? `Delete ${n} selected` : "Delete selected";
+  $("histAll").checked = picks.length > 0 && n === picks.length;
+}
+$("histEdit").onclick = () => {
+  histEditing = !histEditing;
+  $("histEdit").textContent = histEditing ? "Done" : "Edit";
+  $("histBar").hidden = !histEditing;
+  loadHistory();
+};
+$("histAll").onchange = () => { document.querySelectorAll(".hist-pick").forEach((c) => c.checked = $("histAll").checked); histPicked(); };
+$("histDel").onclick = async () => {
+  const ids = [...document.querySelectorAll(".hist-pick:checked")].map((c) => Number(c.dataset.id));
+  if (!ids.length || !confirm(`Delete ${ids.length} search${ids.length > 1 ? "es" : ""}? This can't be undone.`)) return;
+  await api("/api/searches/delete", { method: "POST", body: JSON.stringify({ ids }) }).catch((e) => alert(e.message));
+  if (current && ids.includes(current.id)) { current = null; ["resultsTitle", "sources", "resultsWrap", "trip", "warn"].forEach((k) => { if ($(k)) $(k).hidden = true; }); }
+  loadHistory();
+};
 
 loadPoints();
 loadHistory();
