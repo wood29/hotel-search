@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#141414"/>
+  <g fill="#F3EEE4" transform="translate(512 520) skewX(-12) translate(-512 -520)">
+    <!-- left stem -->
+    <path d="M318 262 h132 v10 c-28 3 -38 12 -38 40 v400 c0 28 10 37 38 40 v10 H318 v-10 c28 -3 38 -12 38 -40 V312 c0 -28 -10 -37 -38 -40z"/>
+    <!-- right stem -->
+    <path d="M574 262 h132 v10 c-28 3 -38 12 -38 40 v400 c0 28 10 37 38 40 v10 H574 v-10 c28 -3 38 -12 38 -40 V312 c0 -28 -10 -37 -38 -40z"/>
+    <!-- hairline crossbar -->
+    <rect x="410" y="498" width="204" height="18"/>
+  </g>
+  <circle cx="780" cy="300" r="40" fill="#C9A46A"/>
+</svg>

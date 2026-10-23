@@ -1,6 +1,8 @@
+// Hotel Search — the page. Talks to the NAS (/api/…) and to the reader add-on (window messages).
 const $ = (id) => document.getElementById(id);
-const fmt = (n) => (n == null ? "" : Math.round(n).toLocaleString("de-AT"));
-const eur = (n) => (n == null ? "" : "€" + Math.round(n).toLocaleString("de-AT"));
+const LOCALE = "de-AT";
+const fmt = (n) => (n == null ? "" : Math.round(n).toLocaleString(LOCALE));
+const eur = (n) => (n == null ? "" : "€" + Math.round(n).toLocaleString(LOCALE));
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
@@ -12,56 +14,61 @@ const ago = (ts) => {
   const m = Math.round((Date.now() / 1000 - ts) / 60);
   return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
-const STATUS = { waiting: "waiting…", loading: "reading…", done: "done", empty: "no results found", none: "site shows no hotels", timeout: "took too long", blocked: "site refused", manual: "open to check" };
-const CHAINS = {
-  Marriott: { program: "Bonvoy", login: "https://www.marriott.com/en-gb/sign-in.mi" },
-  Hilton: { program: "Honors", login: "https://www.hilton.com/en/hilton-honors/login/" },
-  IHG: { program: "One Rewards", login: "https://www.ihg.com/rewardsclub/us/en/sign-in" },
-};
-const MANUAL = ["Amex Membership Rewards", "ALL Accor", "Radisson Rewards", "MeliáRewards", "GHA DISCOVERY"];
-const TIERS = {
-  Marriott: ["Member", "Silver Elite", "Gold Elite", "Platinum Elite", "Titanium Elite", "Ambassador Elite"],
-  Hilton: ["Member", "Silver", "Gold", "Diamond", "Lifetime Diamond"],
-  IHG: ["Club Member", "Silver Elite", "Gold Elite", "Platinum Elite", "Diamond Elite"],
-  "ALL Accor": ["Classic", "Silver", "Gold", "Platinum", "Diamond", "Limitless"],
-  "Radisson Rewards": ["Club", "Premium", "VIP"],
-  "MeliáRewards": ["Member", "Silver", "Gold", "Platinum", "Ambassador"],
-  "GHA DISCOVERY": ["Bronze", "Silver", "Gold", "Platinum", "Titanium"],
-};
-const AIRPORT = /airport|a[ée]roport|aeroporto|flughafen|aeropuerto|lotnisko|\bCDG\b|orly|roissy|schiphol|heathrow|gatwick|stansted|luton|fiumicino|malpensa|barajas|el prat|tegel|brandenburg|\bBER\b|schwechat|\bVIE\b|\bJFK\b|\bLAX\b|\bLHR\b/i;
+const day = (iso, o) => new Date(iso + "T12:00").toLocaleDateString("en-GB", o);
+const fmtDates = (p) => `${day(p.checkIn, { day: "numeric", month: "short" })} – ${day(p.checkOut, { day: "numeric", month: "short" })}`;
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } } };
+const AIRPORT = /airport|a[ée]roport|aeroporto|flughafen|aeropuerto|\bCDG\b|orly|roissy|schiphol|heathrow|gatwick|stansted|luton|fiumicino|malpensa|barajas|el prat|brandenburg|\bBER\b|schwechat|\bVIE\b|\bJFK\b|\bLAX\b|\bLHR\b/i;
+const P = Object.fromEntries(PROGRAMS.map((p) => [p.id, p]));
+const STATUS = { waiting: "Waiting", loading: "Reading", done: "Done", empty: "Nothing read", none: "No hotels offered",
+                 timeout: "Took too long", blocked: "Site refused", manual: "Open to check" };
+
+// ---------- Views ----------
+function show(view) {
+  for (const v of ["search", "members"]) $("view-" + v).hidden = v !== view;
+  document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
+  if (view === "members") loadPoints();
+  if (view === "search" && mapObj) setTimeout(() => mapObj.invalidateSize(), 50);
+  history.replaceState(null, "", view === "members" ? "#memberships" : location.pathname);
+}
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => show(b.dataset.view));
 
 // ---------- Add-on handshake ----------
 let addonReady = false, addonVersion = "", addonBroken = false;
 window.addEventListener("message", (e) => {
   if (e.source !== window || !e.data || e.data.source !== "hs-addon") return;
   if (e.data.type === "ready") {
-    addonReady = e.data.working !== false;
-    addonVersion = e.data.version || "";
-    addonBroken = e.data.working === false;
+    addonReady = e.data.working !== false; addonVersion = e.data.version || ""; addonBroken = e.data.working === false;
     showAddon();
   }
-  if (e.data.type === "started" && !e.data.ok) {
-    $("place").textContent = "The add-on received the search but couldn't open the hotel pages" +
-      (e.data.details && e.data.details.error ? ` (${e.data.details.error})` : "") + ". Use the open links below.";
-  }
+  if (e.data.type === "started" && !e.data.ok)
+    $("place").textContent = "The add-on couldn't open the hotel pages" + (e.data.details && e.data.details.error ? ` (${e.data.details.error})` : "") + ". Use the site links below.";
 });
 function showAddon() {
-  $("addon").className = "pill " + (addonReady ? "ok" : "no");
-  $("addon").textContent = addonReady ? `Reader add-on working · ${addonVersion}`
-    : addonBroken ? `Add-on ${addonVersion} found, but not responding`
-    : "No reader add-on in this browser";
+  const el = $("addon");
+  el.className = "addon " + (addonReady ? "ok" : addonBroken ? "bad" : "no");
+  $("addonText").textContent = addonReady ? "Reader on" : addonBroken ? "Reader stuck" : "No reader";
+  el.title = addonReady ? `Reader add-on ${addonVersion} is working in this browser`
+    : addonBroken ? `Add-on ${addonVersion} found, but not responding` : "No reader add-on in this browser — open the hotel sites yourself, or install it in Settings";
+  $("addonState").textContent = addonReady ? `Version ${addonVersion}, working in this browser.` : addonBroken ? `Version ${addonVersion} found but not responding.` : "Not installed in this browser.";
+  checkAddonAge();
 }
 window.postMessage({ source: "hs-page", type: "ping" }, "*");
 setTimeout(showAddon, 1500);
 
-// ---------- Form ----------
+// ---------- Search form ----------
 (() => {
-  const d = new Date(); d.setDate(d.getDate() + ((11 - d.getDay()) % 7 || 7));
+  const d = new Date(); d.setDate(d.getDate() + ((11 - d.getDay()) % 7 || 7)); // next Thursday
   const iso = (x) => x.toISOString().slice(0, 10);
   $("checkIn").value = iso(d); d.setDate(d.getDate() + 2); $("checkOut").value = iso(d);
 })();
-
+$("checkIn").addEventListener("change", () => {
+  if ($("checkOut").value <= $("checkIn").value) {
+    const d = new Date($("checkIn").value + "T12:00"); d.setDate(d.getDate() + 1); $("checkOut").value = d.toISOString().slice(0, 10);
+  }
+});
 let suggest = [], suggestTimer;
+const label = (g) => [g.city, g.region, g.country].filter(Boolean).join(", ");
 $("city").addEventListener("input", () => {
   clearTimeout(suggestTimer);
   const q = $("city").value.split(",")[0].trim();
@@ -69,10 +76,8 @@ $("city").addEventListener("input", () => {
   suggestTimer = setTimeout(async () => {
     suggest = await api("/api/geocode?q=" + encodeURIComponent(q)).catch(() => []);
     $("citylist").innerHTML = suggest.map((g) => `<option value="${esc(label(g))}">`).join("");
-  }, 300);
+  }, 250);
 });
-const label = (g) => [g.city, g.region, g.country].filter(Boolean).join(", ");
-
 async function resolvePlace(text) {
   const exact = suggest.find((g) => label(g) === text);
   if (exact) return exact;
@@ -82,70 +87,53 @@ async function resolvePlace(text) {
   const want = parts.slice(1).join(" ").toLowerCase();
   return res.find((g) => want && (want.includes(g.country.toLowerCase()) || want.includes((g.region || "").toLowerCase()))) || res[0];
 }
-
 $("search").addEventListener("submit", async (e) => {
   e.preventDefault();
   const checkIn = $("checkIn").value, checkOut = $("checkOut").value;
   if (checkOut <= checkIn) { $("place").textContent = "Check-out must be after check-in."; return; }
-  $("go").disabled = true;
+  $("go").disabled = true; $("place").textContent = "";
   try {
     const place = await resolvePlace($("city").value.trim());
     const params = { ...place, checkIn, checkOut, adults: Number($("adults").value) };
     const { id } = await api("/api/searches", { method: "POST", body: JSON.stringify(params) });
-    $("place").textContent = `${place.city}, ${place.country} · ${HotelUrls.nights(checkIn, checkOut)} nights · ` +
-      (addonReady ? "opening the hotel sites — they flip through for about half a minute, then you're brought back here…" : "open each site below to check prices.");
+    $("place").textContent = addonReady ? "Opening the hotel sites — they flip through for about half a minute, then bring you back here."
+      : "No reader add-on in this browser — open each site from the list below.";
     if (addonReady) window.postMessage({ source: "hs-page", type: "start", searchId: id, params, jobs: HotelUrls.build(params), apiBase: location.origin }, "*");
     await loadSearch(id, true);
     loadHistory();
-  } catch (err) {
-    $("place").textContent = err.message;
-  } finally {
-    $("go").disabled = false;
-  }
+  } catch (err) { $("place").textContent = err.message; }
+  finally { $("go").disabled = false; }
 });
 
-// ---------- Search results ----------
-let current = null, pollTimer = null, chainOn = "All";
+// ---------- Results ----------
+let current = null, pollTimer = null, chainOn = "All", rowsNow = [], hoverKey = null;
 async function loadSearch(id, live = false) {
   clearTimeout(pollTimer);
   const s = await api("/api/searches/" + id);
+  const fresh = !current || current.id !== s.id;
   current = s;
   render();
-  if (live) tripInfo(s.params);
-  const started = s.created * 1000;
+  if (fresh) {
+    tripInfo(s.params); locate(true);
+    // Show what was searched in the search bar, so a tweak and search again is one step.
+    $("city").value = [s.params.city, s.params.country].filter(Boolean).join(", ");
+    $("checkIn").value = s.params.checkIn; $("checkOut").value = s.params.checkOut; $("adults").value = String(s.params.adults);
+    suggest = [{ ...s.params }];
+  }
   const keys = HotelUrls.build(s.params).map((j) => j.key);
-  const done = keys.every((k) => s.results.some((r) => r.key === k && r.status !== "loading"));
-  if (addonReady && !done && Date.now() - started < 180000) pollTimer = setTimeout(() => loadSearch(id), 2000);
+  const done = keys.every((k) => s.results.some((r) => r.key === k && !["loading", "waiting"].includes(r.status)));
+  if (addonReady && !done && Date.now() - s.created * 1000 < 180000) pollTimer = setTimeout(() => loadSearch(id), 2000);
+  else if (!fresh) locate(true);
 }
 
-function render() {
-  const s = current; if (!s) return;
-  const jobs = HotelUrls.build(s.params);
-  const byKey = Object.fromEntries(s.results.map((r) => [r.key, r]));
-  const tooOld = Date.now() - s.created * 1000 > 180000;
-  const fresh = !tooOld;
-  $("resultsTitle").hidden = false;
-  $("resultsTitle").innerHTML = `${fresh ? "Current search" : "Last search"}: ${esc(s.params.city)} · ${fmtDates(s.params)} · ${s.params.adults} guests <span class="muted">· ${ago(s.created)}</span>`;
-
-  $("sources").hidden = false;
-  $("sources").innerHTML = jobs.map((j) => {
-    const r = byKey[j.key];
-    const st = r ? r.status : (!addonReady || tooOld ? "manual" : "waiting");
-    const n = r && r.status === "done" ? ` (${(r.hotels || []).length})` : "";
-    return `<span class="chip ${st}"><span class="dot"></span>${j.chain}${j.kind === "cash+points" ? "" : " " + j.kind} · ${STATUS[st] || st}${n}
-      · <a href="${esc(j.url)}" target="_blank" rel="noopener">open</a></span>`;
-  }).join("");
-
-  const out = [...new Set(s.results.filter((r) => r.signedIn === false).map((r) => r.chain))];
-  $("warn").hidden = !out.length;
-  $("warn").textContent = out.length ? `Not signed in at ${out.join(" and ")} during this search, so those prices may be public rates and points may be missing. Sign in under “Points & accounts”, then search again.` : "";
-
+// One row per hotel: cash from the cash pages, points from the points pages, and what a point is worth here.
+function buildRows(s) {
   const nights = HotelUrls.nights(s.params.checkIn, s.params.checkOut);
   const map = new Map();
   for (const r of s.results) for (const h of r.hotels || []) {
     if (!h.name) continue;
     const key = r.chain + "|" + h.name.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const row = map.get(key) || { name: h.name, chain: r.chain, url: r.url };
+    const row = map.get(key) || { key, name: h.name, chain: r.chain, url: r.url };
     if (h.link && (!row.link || r.kind !== "points")) row.link = h.link;
     if (h.distanceKm != null) row.dist = h.distanceKm;
     if (h.cashPerNight != null && r.kind !== "points") row.cash = h.cashPerNight;
@@ -155,119 +143,191 @@ function render() {
     if (h.pointsLimited && r.kind !== "cash") row.pointsLimited = true;
     map.set(key, row);
   }
-  let rows = [...map.values()].filter((r) => r.cash != null || r.points != null || r.soldOut);
-  for (const r of rows) if (r.total == null && r.cash != null) r.total = r.cash * nights;
-  const chains = ["All", ...new Set(rows.map((r) => r.chain))];
+  const rows = [...map.values()].filter((r) => r.cash != null || r.points != null || r.soldOut);
+  for (const r of rows) {
+    if (r.total == null && r.cash != null) r.total = r.cash * nights;
+    if (r.points != null) r.pointsTotal = r.unit === "stay" ? r.points : r.points * nights;
+    r.airport = AIRPORT.test(r.name);
+    const typical = P[r.chain] && P[r.chain].centsPerPoint;
+    if (r.total && r.pointsTotal) {
+      r.cpp = (r.total * 100) / r.pointsTotal; // euro cents per point
+      r.verdict = typical ? (r.cpp >= typical * 1.25 ? "great" : r.cpp >= typical * 0.85 ? "fair" : "poor") : null;
+    }
+  }
+  const bookable = rows.filter((r) => !r.soldOut && r.cash != null);
+  const cheapest = bookable.reduce((a, b) => (a && a.cash <= b.cash ? a : b), null);
+  const bestValue = rows.filter((r) => r.verdict === "great").reduce((a, b) => (a && a.cpp >= b.cpp ? a : b), null);
+  if (cheapest) cheapest.best = "Lowest price";
+  if (bestValue) bestValue.bestPts = "Best use of points";
+  return { rows, nights };
+}
+
+function render() {
+  const s = current; if (!s) return;
+  $("intro").hidden = true; $("results").hidden = false;
+  const jobs = HotelUrls.build(s.params);
+  const byKey = Object.fromEntries(s.results.map((r) => [r.key, r]));
+  const tooOld = Date.now() - s.created * 1000 > 180000;
+  const { rows: all, nights } = buildRows(s);
+
+  $("rTitle").textContent = s.params.city;
+  $("rMeta").textContent = `${fmtDates(s.params)} · ${nights} night${nights > 1 ? "s" : ""} · ${s.params.adults} guest${s.params.adults > 1 ? "s" : ""}` + (tooOld ? ` · searched ${ago(s.created)}` : "");
+
+  // Which sites were read
+  const states = jobs.map((j) => ({ j, st: byKey[j.key] ? byKey[j.key].status : (!addonReady || tooOld ? "manual" : "waiting"), r: byKey[j.key] }));
+  const busy = states.filter((x) => ["waiting", "loading"].includes(x.st)).length;
+  $("sources").innerHTML = `<span class="src-sum">${busy ? `<span class="spin"></span>Reading ${jobs.length - busy} of ${jobs.length} sites…` : `${jobs.length} sites`}</span>` +
+    states.map(({ j, st, r }) => `<a class="src ${st}" href="${esc(j.url)}" target="_blank" rel="noopener" title="${esc(STATUS[st] || st)} — open ${esc(j.chain)}">
+      <i class="c-${j.chain.toLowerCase()}"></i>${esc(j.chain)}${j.kind === "cash+points" ? "" : `<em>${j.kind}</em>`}
+      <b>${st === "done" ? (r.hotels || []).length : esc(STATUS[st] || st)}</b></a>`).join("");
+
+  const out = [...new Set(s.results.filter((r) => r.signedIn === false).map((r) => r.chain))];
+  $("warn").hidden = !out.length;
+  $("warn").textContent = out.length ? `Not signed in at ${out.join(" and ")} — those prices may be public rates and points may be missing. Sign in under Memberships, then search again.` : "";
+
+  const chains = ["All", ...new Set(all.map((r) => r.chain))];
   if (!chains.includes(chainOn)) chainOn = "All";
-  $("chainFilter").innerHTML = chains.map((c) => `<button type="button" class="${c === chainOn ? "on" : ""}" data-c="${esc(c)}">${esc(c)}</button>`).join("");
+  $("chainFilter").innerHTML = chains.map((c) => `<button type="button" class="${c === chainOn ? "on" : ""}" data-c="${esc(c)}">${c === "All" ? "All" : `<i class="c-${c.toLowerCase()}"></i>${esc(c)}`}</button>`).join("");
   $("chainFilter").querySelectorAll("button").forEach((b) => b.onclick = () => { chainOn = b.dataset.c; render(); });
+
+  let rows = all.slice();
   if (chainOn !== "All") rows = rows.filter((r) => r.chain === chainOn);
   const maxKm = Number($("maxKm").value) || null;
   if (maxKm) rows = rows.filter((r) => r.dist == null || r.dist <= maxKm);
-  if ($("noAirport").checked) rows = rows.filter((r) => !AIRPORT.test(r.name));
+  if ($("noAirport").checked) rows = rows.filter((r) => !r.airport);
   const big = Number.MAX_SAFE_INTEGER, by = $("sort").value;
-  rows.sort((a, b) => by === "points" ? (a.points ?? big) - (b.points ?? big)
+  rows.sort((a, b) => (a.soldOut ? 1 : 0) - (b.soldOut ? 1 : 0) || (
+    by === "points" ? (a.pointsTotal ?? big) - (b.pointsTotal ?? big)
+    : by === "value" ? (b.cpp ?? -1) - (a.cpp ?? -1)
     : by === "dist" ? (a.dist ?? big) - (b.dist ?? big)
-    : by === "chain" ? a.chain.localeCompare(b.chain) || (a.cash ?? big) - (b.cash ?? big)
-    : (a.soldOut ? 1 : 0) - (b.soldOut ? 1 : 0) || (a.cash ?? big) - (b.cash ?? big));
+    : (a.cash ?? big) - (b.cash ?? big)));
+  rowsNow = rows;
 
-  $("resultsWrap").hidden = !map.size;
-  $("count").textContent = `${rows.length} hotels · ${s.params.city} · ${nights} nights · ${fmtDates(s.params)}`;
-  $("rows").innerHTML = rows.map((r) => `
-    <tr>
-      <td class="name"><a href="${esc(r.link || r.url || "#")}" target="_blank" rel="noopener" title="${r.link ? "Open this hotel's offer" : "Open the search page"}">${esc(r.name)}</a>${r.soldOut ? ' <span class="tag">sold out</span>' : ""}</td>
-      <td><span class="tag">${esc(r.chain)}</span></td>
-      <td class="num">${r.dist != null ? r.dist.toLocaleString("de-AT") + " km" : ""}</td>
-      <td class="num">${eur(r.cash)}</td>
-      <td class="num">${eur(r.total)}</td>
-      <td class="num">${r.points != null ? fmt(r.points) + ` <span class="muted">/ ${esc(r.unit)}</span>` : ""}${r.pointsLimited ? ' <span class="muted">(not all nights)</span>' : ""}</td>
-    </tr>`).join("");
+  const hidden = all.length - rows.length;
+  $("list").innerHTML = (rows.length ? rows.map(card).join("") : `<div class="empty">${all.length ? "No hotels match these filters." : busy ? "Hotels appear here as each site is read." : "No hotels were read for this search. Open the sites above to check."}</div>`)
+    + (hidden && rows.length ? `<p class="list-foot">${hidden} more hidden by filters</p>` : "");
+  $("list").querySelectorAll(".hotel").forEach((el) => {
+    el.onmouseenter = () => highlight(el.dataset.k, false);
+    el.onmouseleave = () => highlight(null, false);
+  });
+  drawMarkers();
 }
-for (const id of ["sort", "maxKm", "noAirport"]) $(id).addEventListener("change", () => { saveFilters(); render(); });
-function saveFilters() { try { localStorage.setItem("hs-filters", JSON.stringify({ sort: $("sort").value, maxKm: $("maxKm").value, noAirport: $("noAirport").checked })); } catch (e) {} }
-try { const f = JSON.parse(localStorage.getItem("hs-filters") || "{}"); if (f.sort) $("sort").value = f.sort; if (f.maxKm != null) $("maxKm").value = f.maxKm; $("noAirport").checked = !!f.noAirport; } catch (e) {}
-const fmtDates = (p) => {
-  const f = (d) => new Date(d + "T12:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-  return `${f(p.checkIn)} – ${f(p.checkOut)}`;
-};
+
+function card(r) {
+  const unit = r.unit === "stay" ? "for the stay" : r.unit === "first night" ? "first night" : "per night";
+  const v = r.cpp != null ? `<span class="cpp ${r.verdict || ""}" title="What one point is worth here, in euro cents. Typical for ${esc(r.chain)}: ${P[r.chain] ? P[r.chain].centsPerPoint : "?"} ¢">${r.cpp.toFixed(2).replace(".", ",")} ¢/pt</span>` : "";
+  const sub = [r.dist != null ? `${r.dist.toLocaleString(LOCALE)} km from centre` : null, r.airport ? "airport" : null].filter(Boolean).join(" · ");
+  return `<article class="hotel${r.soldOut ? " sold" : ""}" data-k="${esc(r.key)}">
+    <div class="h-main">
+      <div class="h-flags">${r.best ? `<span class="flag">${r.best}</span>` : ""}${r.bestPts ? `<span class="flag brass">${r.bestPts}</span>` : ""}</div>
+      <a class="h-name" href="${esc(r.link || r.url || "#")}" target="_blank" rel="noopener" title="${r.link ? "Open this hotel's offer" : "Open the search on the hotel site"}">${esc(r.name)}</a>
+      <div class="h-sub"><span class="chain"><i class="c-${r.chain.toLowerCase()}"></i>${esc(r.chain)}</span>${sub ? `<span>${esc(sub)}</span>` : ""}</div>
+    </div>
+    <div class="h-cash">${r.soldOut ? `<span class="sold-label">Sold out</span>` : r.cash != null
+      ? `<div class="amt">${eur(r.cash)}<small> / night</small></div><div class="sub">${eur(r.total)} total</div>` : `<div class="none" title="No cash rate read">—</div>`}</div>
+    <div class="h-pts">${r.points != null
+      ? `<div class="amt">${fmt(r.points)}<small> pts</small></div><div class="sub">${unit}${r.pointsLimited ? " · not all nights" : ""} ${v}</div>`
+      : r.soldOut ? "" : `<div class="none" title="No points rate read">—</div>`}</div>
+  </article>`;
+}
+for (const id of ["sort", "maxKm", "noAirport"]) $(id).addEventListener("change", () => { store.set("hs-filters", { sort: $("sort").value, maxKm: $("maxKm").value, noAirport: $("noAirport").checked }); render(); });
+(() => { const f = store.get("hs-filters", {}); if (f.sort) $("sort").value = f.sort; if (f.maxKm != null) $("maxKm").value = f.maxKm; $("noAirport").checked = !!f.noAirport; })();
+document.querySelectorAll("#viewSwitch button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("#viewSwitch button").forEach((x) => x.classList.toggle("on", x === b));
+  $("split").classList.toggle("show-map", b.dataset.v === "map");
+  if (mapObj) setTimeout(() => { mapObj.invalidateSize(); fitMap(); }, 60);
+});
+
+// ---------- Map ----------
+let mapObj = null, markers = {}, coords = {}, locateTimer = null, tileLayer = null, locateTries = 0;
+const dark = () => window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
+function ensureMap() {
+  if (mapObj || typeof L === "undefined") return mapObj;
+  mapObj = L.map("map", { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
+  setTiles();
+  if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", setTiles);
+  return mapObj;
+}
+function setTiles() {
+  if (!mapObj) return;
+  if (tileLayer) tileLayer.remove();
+  tileLayer = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark() ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`, {
+    maxZoom: 19, subdomains: "abcd", attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a>' }).addTo(mapObj);
+}
+async function locate(again, first = true) {
+  clearTimeout(locateTimer);
+  if (first) locateTries = 0;
+  if (!current) return;
+  const names = buildRows(current).rows.map((r) => r.name);
+  if (!names.length) { drawMarkers(); return; }
+  try {
+    const r = await api("/api/hotel-geo", { method: "POST", body: JSON.stringify({ search: current.id, names }) });
+    Object.assign(coords, r.locations);
+    drawMarkers();
+    $("mapNote").textContent = r.pending ? `Placing ${r.pending} more hotel${r.pending > 1 ? "s" : ""} on the map…` : "";
+    if (r.pending && again && ++locateTries < 40) locateTimer = setTimeout(() => locate(true, false), 3000);
+  } catch (e) { $("mapNote").textContent = "Map locations unavailable right now."; }
+}
+function drawMarkers() {
+  if (!ensureMap() || !current) return;
+  for (const m of Object.values(markers)) m.remove();
+  markers = {};
+  const centre = [current.params.lat, current.params.lon];
+  const pin = L.divIcon({ className: "centre-pin", html: "<i></i>", iconSize: [14, 14] });
+  markers.__centre = L.marker(centre, { icon: pin, interactive: false, keyboard: false }).addTo(mapObj);
+  for (const r of rowsNow) {
+    const c = coords[r.name]; if (!c) continue;
+    const text = r.soldOut ? "Sold out" : r.cash != null ? eur(r.cash) : r.points != null ? kpts(r.points) : "";
+    const icon = L.divIcon({ className: "", html: `<span class="mk ${r.soldOut ? "sold" : ""} ${r.bestPts ? "brass" : ""}" data-k="${esc(r.key)}">${text}</span>`, iconSize: null });
+    const m = L.marker(c, { icon, riseOnHover: true }).addTo(mapObj);
+    m.bindTooltip(`<b>${esc(r.name)}</b><br>${esc(r.chain)}${r.points != null ? " · " + fmt(r.points) + " pts" : ""}`, { direction: "top", offset: [0, -14] });
+    m.on("click", () => { const el = document.querySelector(`.hotel[data-k="${CSS.escape(r.key)}"]`); if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); highlight(r.key, true); } });
+    m.on("mouseover", () => highlight(r.key, false));
+    m.on("mouseout", () => highlight(null, false));
+    markers[r.key] = m;
+  }
+  fitMap();
+}
+const kpts = (n) => n >= 1e6 ? (n / 1e6).toLocaleString(LOCALE, { maximumFractionDigits: 1 }) + "M pts" : Math.round(n / 1000) + "k pts";
+function fitMap() {
+  if (!mapObj || !current) return;
+  const pts = Object.entries(markers).filter(([k]) => k !== "__centre").map(([, m]) => m.getLatLng());
+  const near = pts.filter((p) => mapObj.distance(p, [current.params.lat, current.params.lon]) < 15000);
+  if (near.length) mapObj.fitBounds(L.latLngBounds(near.concat([[current.params.lat, current.params.lon]])).pad(0.15), { maxZoom: 15 });
+  else mapObj.setView([current.params.lat, current.params.lon], 13);
+}
+function highlight(key, sticky) {
+  if (hoverKey === key && !sticky) return;
+  hoverKey = key;
+  document.querySelectorAll(".hotel.hl").forEach((e) => e.classList.remove("hl"));
+  document.querySelectorAll(".mk.hl").forEach((e) => e.classList.remove("hl"));
+  if (!key) return;
+  const el = document.querySelector(`.hotel[data-k="${CSS.escape(key)}"]`); if (el) el.classList.add("hl");
+  const mk = document.querySelector(`.mk[data-k="${CSS.escape(key)}"]`); if (mk) mk.classList.add("hl");
+  if (markers[key]) markers[key].setZIndexOffset(1000);
+}
 
 // ---------- Weather, holidays, flights ----------
 async function tripInfo(p) {
-  $("trip").hidden = false;
-  $("weather").innerHTML = `<h3>Weather in ${esc(p.city)}</h3><p class="muted">Loading…</p>`;
-  renderExtras(p, null);
-  api(`/api/weather?lat=${p.lat}&lon=${p.lon}&start=${p.checkIn}&end=${p.checkOut}`).then((w) => {
-    const title = w.mode === "forecast" ? `Forecast for ${esc(p.city)}` : `${esc(p.city)} on these dates last year`;
-    const note = w.mode === "forecast" ? "" : `<p class="muted">The real forecast appears from ${new Date(w.available_from + "T12:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}.</p>`;
-    $("weather").innerHTML = `<h3>${title}</h3><div class="days">${w.days.map((d) => `
-      <div class="day"><div class="d">${new Date(d.date + "T12:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}</div>
-      <div class="i" title="${esc(d.text)}">${d.icon}</div><div class="t">${Math.round(d.max)}°</div>
-      <div class="r">${Math.round(d.min)}° · ${d.rain ? d.rain.toFixed(1) + " mm" : "dry"}</div></div>`).join("")}</div>${note}`;
-  }).catch(() => { $("weather").innerHTML = `<h3>Weather</h3><p class="muted">Not available right now.</p>`; });
-  api(`/api/holidays?cc=${p.countryCode}&start=${p.checkIn}&end=${p.checkOut}`).then((h) => renderExtras(p, h)).catch(() => renderExtras(p, []));
-}
-function renderExtras(p, hol) {
-  const from = localStorage.getItem("hs-from") || "Vienna";
+  const from = store.get("hs-from", "Vienna");
   const q = encodeURIComponent(`Flights from ${from} to ${p.city} on ${p.checkIn} through ${p.checkOut}`);
-  $("extras").innerHTML = `<h3>For this trip</h3>
-    <div class="row">✈️ <a href="https://www.google.com/travel/flights?q=${q}" target="_blank" rel="noopener">Google Flights from</a>
-      <input id="from" value="${esc(from)}" aria-label="Flying from"></div>
-    <div>${hol == null ? '<p class="muted">Checking public holidays…</p>'
-      : hol.length ? `🗓️ Public holidays during your stay:<ul>${hol.map((x) => `<li>${new Date(x.date + "T12:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}: ${esc(x.name)}</li>`).join("")}</ul>`
-      : '<p class="muted">🗓️ No public holidays during your stay.</p>'}</div>`;
-  $("from").onchange = () => { localStorage.setItem("hs-from", $("from").value.trim() || "Vienna"); renderExtras(p, hol); };
+  const parts = { weather: `<span class="t-item muted">Weather…</span>`, hol: "",
+    flights: `<a class="t-item link" href="https://www.google.com/travel/flights?q=${q}" target="_blank" rel="noopener">Flights from ${esc(from)} ↗</a>` };
+  const draw = () => { $("trip").innerHTML = parts.weather + parts.hol + parts.flights; };
+  draw();
+  api(`/api/weather?lat=${p.lat}&lon=${p.lon}&start=${p.checkIn}&end=${p.checkOut}`).then((w) => {
+    const days = w.days.slice(0, 5).map((d) => `<span class="wd" title="${esc(d.text)} · ${Math.round(d.min)}–${Math.round(d.max)}°${d.rain ? " · " + d.rain.toFixed(1) + " mm" : ""}">
+      <span class="wd-d">${day(d.date, { weekday: "short" })}</span><span class="wd-i">${d.icon}</span><span class="wd-t">${Math.round(d.max)}°</span></span>`).join("");
+    parts.weather = `<span class="t-item weather" title="${w.mode === "forecast" ? "Forecast" : "Last year on these dates — the forecast appears closer to the trip"}">${days}${w.mode === "forecast" ? "" : '<span class="wd-note">last year</span>'}</span>`;
+    draw();
+  }).catch(() => { parts.weather = ""; draw(); });
+  api(`/api/holidays?cc=${p.countryCode}&start=${p.checkIn}&end=${p.checkOut}`).then((h) => {
+    parts.hol = h.length ? `<span class="t-item hol" title="${esc(h.map((x) => day(x.date, { weekday: "short", day: "numeric", month: "short" }) + ": " + x.name).join("\n"))}">Holiday · ${esc(h[0].name)}${h.length > 1 ? ` +${h.length - 1}` : ""}</span>` : "";
+    draw();
+  }).catch(() => {});
 }
 
-// ---------- Points ----------
-async function loadPoints() {
-  const { latest, history, accounts, status = {} } = await api("/api/points").catch(() => ({ latest: {}, history: {}, accounts: {}, status: {} }));
-  const tierHtml = (p) => {
-    const st = status[p];
-    const opts = TIERS[p];
-    if (!opts) return "";
-    return `<div class="tier">${st ? esc(st.tier) : ""}</div>
-      <select data-tier="${esc(p)}" aria-label="${esc(p)} status"><option value="">${st ? "Change status…" : "Set your status…"}</option>${opts.map((o) => `<option ${st && st.tier === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
-  };
-  const auto = Object.entries(CHAINS).map(([chain, c]) => {
-    const l = latest[chain], a = accounts[chain] || {};
-    const prev = (history[chain] || [])[1];
-    // A sign-in only counts if it was seen recently: logins expire, and each browser has its own.
-    const fresh = a.checked && Date.now() / 1000 - a.checked < 3600;
-    const signedNow = a.signedIn === true && fresh;
-    const state = signedNow ? `<span class="meta ok">Signed in · checked ${ago(a.checked)}</span>`
-      : a.signedIn === false && fresh ? `<span class="meta no">Not signed in</span>`
-      : `<span class="meta">Sign in before searching</span>`;
-    return `<div class="pt"><div class="name">${chain} <span class="muted">${c.program}</span></div>
-      <div class="bal">${l ? fmt(l.balance) : "–"}</div>
-      ${prev ? `<span class="delta">${l.balance >= prev.balance ? "+" : ""}${fmt(l.balance - prev.balance)} since ${ago(l.ts)}</span>` : l ? `<span class="delta">updated ${ago(l.ts)}</span>` : ""}
-      ${tierHtml(chain)}
-      ${state}
-      <div><button class="ghost" data-login="${c.login}">${signedNow ? "Open site" : "Sign in"}</button></div></div>`;
-  });
-  const manual = MANUAL.map((p) => {
-    const l = latest[p];
-    return `<div class="pt manual" data-program="${esc(p)}"><div class="name">${esc(p)}</div>
-      <div class="bal">${l ? fmt(l.balance) : "–"}</div>
-      <span class="meta">${l ? "updated " + ago(l.ts) : "Tap to enter your balance"}</span>${tierHtml(p)}</div>`;
-  });
-  $("points").innerHTML = auto.concat(manual).join("");
-  $("points").querySelectorAll("[data-login]").forEach((b) => b.onclick = () => window.open(b.dataset.login, "_blank"));
-  $("points").querySelectorAll("select[data-tier]").forEach((sel) => {
-    sel.onclick = (e) => e.stopPropagation();
-    sel.onchange = async () => { await api("/api/status", { method: "POST", body: JSON.stringify({ program: sel.dataset.tier, tier: sel.value }) }); loadPoints(); };
-  });
-  $("points").querySelectorAll("[data-program]").forEach((el) => el.onclick = async (ev) => {
-    if (ev.target.closest("select")) return;
-    const v = prompt(`Current ${el.dataset.program} balance:`);
-    if (v == null) return;
-    const n = Number(String(v).replace(/[^\d]/g, ""));
-    if (!Number.isFinite(n) || String(v).replace(/[^\d]/g, "") === "") return;
-    await api("/api/points", { method: "POST", body: JSON.stringify({ program: el.dataset.program, balance: n }) });
-    loadPoints();
-  });
-}
-
-// ---------- History ----------
+// ---------- Recent searches ----------
 let histEditing = false;
 async function loadHistory() {
   const list = await api("/api/searches?limit=30").catch(() => []);
@@ -276,9 +336,9 @@ async function loadHistory() {
   $("history").innerHTML = list.length ? list.map((s) => `
     <div class="hist-row">
       ${histEditing ? `<input type="checkbox" class="hist-pick" data-id="${s.id}" aria-label="Select this search">` : ""}
-      <button type="button" data-id="${s.id}"><span>${esc(s.params.city)}, ${esc(s.params.country)} · ${fmtDates(s.params)} · ${s.params.adults} guests</span>
-      <span class="muted">${ago(s.created)}</span></button>
-    </div>`).join("") : '<div class="empty-note">Your searches will appear here.</div>';
+      <button type="button" data-id="${s.id}"><span class="h-city">${esc(s.params.city)}<span class="muted">, ${esc(s.params.country)}</span></span>
+        <span class="h-when">${fmtDates(s.params)} · ${s.params.adults} guest${s.params.adults > 1 ? "s" : ""}</span><span class="muted h-ago">${ago(s.created)}</span></button>
+    </div>`).join("") : '<div class="empty small">Your searches will appear here.</div>';
   $("history").querySelectorAll("button[data-id]").forEach((b) => b.onclick = () => {
     if (histEditing) { const c = b.parentElement.querySelector(".hist-pick"); c.checked = !c.checked; histPicked(); return; }
     loadSearch(Number(b.dataset.id), true); window.scrollTo({ top: 0, behavior: "smooth" });
@@ -290,7 +350,7 @@ function histPicked() {
   const picks = [...document.querySelectorAll(".hist-pick")];
   const n = picks.filter((c) => c.checked).length;
   $("histDel").disabled = !n;
-  $("histDel").textContent = n ? `Delete ${n} selected` : "Delete selected";
+  $("histDel").textContent = n ? `Delete ${n}` : "Delete";
   $("histAll").checked = picks.length > 0 && n === picks.length;
 }
 $("histEdit").onclick = () => {
@@ -304,56 +364,128 @@ $("histDel").onclick = async () => {
   const ids = [...document.querySelectorAll(".hist-pick:checked")].map((c) => Number(c.dataset.id));
   if (!ids.length || !confirm(`Delete ${ids.length} search${ids.length > 1 ? "es" : ""}? This can't be undone.`)) return;
   await api("/api/searches/delete", { method: "POST", body: JSON.stringify({ ids }) }).catch((e) => alert(e.message));
-  if (current && ids.includes(current.id)) { current = null; ["resultsTitle", "sources", "resultsWrap", "trip", "warn"].forEach((k) => { if ($(k)) $(k).hidden = true; }); }
+  if (current && ids.includes(current.id)) { current = null; $("results").hidden = true; $("intro").hidden = false; }
   loadHistory();
 };
 
-loadPoints();
-loadHistory();
-// The page starts empty: points and recent searches only. Open a recent search to see it again.
-setInterval(() => { if (!document.hidden) loadPoints(); }, 8000);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPoints(); });
+// ---------- Memberships ----------
+let pointsData = null;
+async function loadPoints() {
+  pointsData = await api("/api/points").catch(() => ({ latest: {}, history: {}, accounts: {}, status: {} }));
+  const { latest, history: hist, accounts, status = {} } = pointsData;
+  let total = 0, counted = 0;
+  for (const p of PROGRAMS) {
+    const l = latest[p.id];
+    if (l && p.centsPerPoint) { total += (l.balance * p.centsPerPoint) / 100; counted++; }
+  }
+  $("mTotal").textContent = counted ? "≈ " + eur(total) : "Add your balances";
+  $("mSub").textContent = counted ? `across ${counted} programme${counted > 1 ? "s" : ""}, at typical point values` : "Marriott, Hilton and IHG fill in by themselves when you search while signed in.";
+
+  const card = (p) => {
+    const l = latest[p.id], a = accounts[p.id] || {}, st = status[p.id];
+    const prev = (hist[p.id] || [])[1];
+    const tierName = st ? st.tier : null;
+    const ti = tierName ? p.tiers.findIndex((t) => t.name === tierName) : -1;
+    const tier = ti >= 0 ? p.tiers[ti] : null, next = ti >= 0 ? p.tiers[ti + 1] : null;
+    const fresh = a.checked && Date.now() / 1000 - a.checked < 3600;
+    const signedNow = a.signedIn === true && fresh;
+    const state = !p.auto ? "" : signedNow ? `<span class="state ok">Signed in</span>` : a.signedIn === false && fresh ? `<span class="state no">Signed out</span>` : `<span class="state">Sign in before searching</span>`;
+    const value = l && p.centsPerPoint ? `≈ ${eur((l.balance * p.centsPerPoint) / 100)}` : "";
+    const delta = prev && l ? `${l.balance >= prev.balance ? "+" : "−"}${fmt(Math.abs(l.balance - prev.balance))} since ${ago(prev.ts)}` : l ? `updated ${ago(l.ts)}` : "";
+    return `<article class="prog${p.auto ? "" : " compact"}" data-p="${esc(p.id)}">
+      <header><div><h3>${esc(p.name)}</h3>${state}</div>
+        <button class="tier-badge ${tier ? "t" + Math.min(ti, 5) : "none"}" data-tier-edit="${esc(p.id)}" type="button" title="Change status">${tier ? esc(tier.name) : "Set status"}</button></header>
+      <div class="bal-row">
+        <button class="bal" type="button" data-bal="${esc(p.id)}" title="${p.auto ? "Fills in when you search signed in — tap to correct" : "Tap to update"}">${l ? fmt(l.balance) : "—"}<small>${l ? " pts" : ""}</small></button>
+        <span class="bal-val">${value}</span>
+      </div>
+      <p class="meta">${esc(delta)}</p>
+      ${tier && tier.benefits.length ? `<ul class="perks">${tier.benefits.slice(0, 4).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : p.auto && !tier ? `<p class="meta">Set your status to see what it gets you.</p>` : ""}
+      ${next ? `<p class="next"><span>Next: ${esc(next.name)}</span> ${esc(next.qualify || "")}</p>` : ""}
+      <footer>${p.login ? `<a class="btn small" href="${esc(signedNow ? p.site : p.login)}" target="_blank" rel="noopener">${signedNow ? "Open site" : "Sign in"}</a>` : ""}
+        <select class="tier-select" data-tier="${esc(p.id)}" aria-label="${esc(p.name)} status" hidden>
+          <option value="">No status</option>${p.tiers.map((t) => `<option ${tierName === t.name ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></footer>
+    </article>`;
+  };
+  const main = PROGRAMS.filter((p) => p.auto), other = PROGRAMS.filter((p) => !p.auto && p.kind !== "bank");
+  $("programs").innerHTML = `<div class="prog-grid">${main.map(card).join("")}</div>
+    <h2 class="sub-head">Other programmes</h2><div class="prog-grid small">${other.map(card).join("")}</div>`;
+  $("programs").querySelectorAll("[data-tier-edit]").forEach((b) => b.onclick = () => {
+    const sel = b.closest(".prog").querySelector(".tier-select"); sel.hidden = false; sel.focus();
+  });
+  $("programs").querySelectorAll(".tier-select").forEach((sel) => sel.onchange = async () => {
+    await api("/api/status", { method: "POST", body: JSON.stringify({ program: sel.dataset.tier, tier: sel.value }) }); loadPoints();
+  });
+  $("programs").querySelectorAll("[data-bal]").forEach((b) => b.onclick = () => askBalance(b.dataset.bal));
+  renderAmex();
+}
+async function askBalance(id) {
+  const v = prompt(`Current ${P[id] ? P[id].name : id} balance:`);
+  if (v == null) return;
+  const digits = String(v).replace(/[^\d]/g, "");
+  if (!digits) return;
+  await api("/api/points", { method: "POST", body: JSON.stringify({ program: id, balance: Number(digits) }) });
+  loadPoints();
+}
+function renderAmex() {
+  const amex = PROGRAMS.find((p) => p.kind === "bank");
+  if (!amex) { $("amex").innerHTML = ""; return; }
+  const l = pointsData.latest[amex.id];
+  const bal = l ? l.balance : null;
+  $("amex").innerHTML = `<div class="amex-head"><div><p class="eyebrow">${esc(amex.name)}</p>
+      <button class="bal big" type="button" data-bal="${esc(amex.id)}">${bal != null ? fmt(bal) : "Add balance"}<small>${bal != null ? " pts" : ""}</small></button>
+      <p class="meta">${l ? "updated " + ago(l.ts) : "Enter it from your Amex app — it isn't read automatically."}</p></div>
+      <p class="note">${esc(amex.note || "")}</p></div>
+    <div class="xfers">${amex.transfers.map((t) => {
+      const to = P[t.to], got = bal != null ? Math.floor((bal / t.from) * t.get) : null;
+      const val = got != null && to && to.centsPerPoint ? (got * to.centsPerPoint) / 100 : null;
+      return `<div class="xfer"><span class="x-to"><i class="c-${esc(t.to.toLowerCase())}"></i>${esc(to ? to.name : t.to)}</span>
+        <span class="x-rate">${fmt(t.from)} → ${fmt(t.get)}</span>
+        <span class="x-got">${got != null ? fmt(got) + " pts" : ""}</span><span class="x-val">${val != null ? "≈ " + eur(val) : ""}</span></div>`;
+    }).join("")}</div>`;
+  $("amex").querySelectorAll("[data-bal]").forEach((b) => b.onclick = () => askBalance(b.dataset.bal));
+}
 
 // ---------- Settings & updates ----------
-$("gear").onclick = () => { $("settings").hidden = !$("settings").hidden; };
-api("/api/health").then((h) => { $("version").textContent = h.version || "0.3"; }).catch(() => {});
-// The newest add-on that this web app version ships (the add-on rarely changes now).
 const ADDON_LATEST = "0.6.1";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
-  for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
-
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+$("gear").onclick = () => { $("settings").hidden = false; checkUpdates(); };
+$("setClose").onclick = () => { $("settings").hidden = true; };
+$("settings").onclick = (e) => { if (e.target === $("settings")) $("settings").hidden = true; };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("settings").hidden = true; });
+$("addonLink").href = "/static/hotel-search-addon.zip?v=" + ADDON_LATEST;
+$("fromCity").value = store.get("hs-from", "Vienna");
+$("fromCity").onchange = () => { store.set("hs-from", $("fromCity").value.trim() || "Vienna"); if (current) tripInfo(current.params); };
+api("/api/health").then((h) => { $("version").textContent = h.version; }).catch(() => {});
+function checkAddonAge() {
+  $("addonAdvice").innerHTML = addonVersion && newer(ADDON_LATEST, addonVersion) ? `<b>Version ${ADDON_LATEST} is available — reinstall it.</b>` : "";
+}
 async function checkUpdates() {
   try {
     const u = await api("/api/admin/update-status");
     $("keyBox").open = !u.hasKey;
-    if (!u.hasKey) { $("latestInfo").textContent = "add your GitHub key below to get one-tap updates"; $("ghGo").hidden = true; }
-    else if (u.error) { $("latestInfo").textContent = u.error; $("ghGo").hidden = true; }
-    else if (newer(u.latest, u.current)) { $("latestInfo").innerHTML = `<b>version ${u.latest} is ready</b>`; $("ghGo").hidden = false; $("gear").classList.add("dot"); }
-    else { $("latestInfo").textContent = "up to date"; $("ghGo").hidden = true; }
+    const ready = u.hasKey && !u.error && newer(u.latest, u.current);
+    $("latestInfo").textContent = !u.hasKey ? "add your GitHub key for one-tap updates" : u.error ? u.error : ready ? `version ${u.latest} is ready` : "up to date";
+    $("ghGo").hidden = !ready;
+    $("gear").classList.toggle("dot", !!ready);
   } catch (e) { $("latestInfo").textContent = "couldn't check for updates"; }
-  if (addonVersion && newer(ADDON_LATEST, addonVersion))
-    $("addonAdvice").innerHTML = `<b>Your add-on (${addonVersion}) is older than ${ADDON_LATEST} — please reinstall it.</b>`;
+  checkAddonAge();
 }
-$("addonLink").href = "/static/hotel-search-addon.zip?v=" + ADDON_LATEST; // always a fresh copy, never a cached old one
-checkUpdates();
-setTimeout(checkUpdates, 3000); // again once the add-on has said hello
 $("ghGo").onclick = async () => {
   $("ghGo").disabled = true; $("ghMsg").textContent = "Downloading and installing…";
   try {
     await api("/api/admin/update-from-github", { method: "POST", body: "{}" });
-    $("ghMsg").textContent = "Installed. Restarting… the page reloads in a few seconds.";
+    $("ghMsg").textContent = "Installed. Restarting — the page reloads in a few seconds.";
     setTimeout(() => location.reload(), 6000);
   } catch (e) { $("ghMsg").textContent = e.message; $("ghGo").disabled = false; }
 };
 $("ghKeyGo").onclick = async () => {
-  const key = $("ghKey").value.trim();
-  if (!key) return;
+  const key = $("ghKey").value.trim(); if (!key) return;
   $("ghMsg").textContent = "Checking the key…";
   try {
     const r = await api("/api/admin/key", { method: "POST", body: JSON.stringify({ key }) });
-    $("ghKey").value = "";
-    $("ghMsg").textContent = r.ok ? "Key saved — it works." : "Key saved, but: " + r.error;
-    checkUpdates();
+    $("ghKey").value = ""; $("ghMsg").textContent = r.ok ? "Key saved — it works." : "Key saved, but: " + r.error; checkUpdates();
   } catch (e) { $("ghMsg").textContent = e.message; }
 };
 $("updGo").onclick = async () => {
@@ -362,9 +494,15 @@ $("updGo").onclick = async () => {
   $("updGo").disabled = true; $("updMsg").textContent = "Installing…";
   try {
     const r = await fetch("/api/admin/update", { method: "POST", headers: { "Content-Type": "application/gzip" }, body: await f.arrayBuffer() });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error || "Update failed");
-    $("updMsg").textContent = "Installed. Restarting… the page reloads in a few seconds.";
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || "Update failed");
+    $("updMsg").textContent = "Installed. Restarting — the page reloads in a few seconds.";
     setTimeout(() => location.reload(), 5000);
   } catch (e) { $("updMsg").textContent = e.message; $("updGo").disabled = false; }
 };
+
+// ---------- Start ----------
+loadHistory();
+checkUpdates();
+setTimeout(checkUpdates, 3000);
+show(location.hash === "#memberships" ? "members" : "search");
+setInterval(() => { if (!document.hidden && !$("view-members").hidden) loadPoints(); }, 15000);

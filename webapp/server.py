@@ -27,7 +27,8 @@ SITES = {"marriott.com": "Marriott", "hilton.com": "Hilton", "ihg.com": "IHG"}
 APP_DIR = os.path.join(os.path.dirname(DB_PATH), "app")
 
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json", ".zip": "application/zip"}
+         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json", ".zip": "application/zip",
+         ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json"}
 
 
 def db():
@@ -64,6 +65,9 @@ def init_db():
             key TEXT NOT NULL,
             chain TEXT, text TEXT, links TEXT, updated REAL,
             PRIMARY KEY (search_id, key));
+        CREATE TABLE IF NOT EXISTS geo (
+            key TEXT PRIMARY KEY,
+            lat REAL, lon REAL, ts REAL);
         CREATE TABLE IF NOT EXISTS status (
             program TEXT PRIMARY KEY,
             tier TEXT, source TEXT, updated REAL);
@@ -176,6 +180,60 @@ def install_from_github():
     install_update(out.getvalue())
 
 
+# ---------- Hotel locations for the map ----------
+# Looked up once per hotel on OpenStreetMap (Nominatim, max one request a second as they ask) and kept.
+GEO_QUEUE, GEO_PENDING = [], set()
+GEO_WAKE = threading.Event()
+
+
+def geo_key(name, city):
+    return (re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip() + "|" + (city or "").lower().strip())
+
+
+def geo_worker():
+    while True:
+        GEO_WAKE.wait(30)
+        GEO_WAKE.clear()
+        while GEO_QUEUE:
+            key, name, city, country = GEO_QUEUE.pop(0)
+            lat = lon = None
+            failed = False
+            for q in (f"{name}, {city}, {country}", f"{name}, {country}"):
+                try:
+                    url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + urllib.parse.quote(q)
+                    req = urllib.request.Request(url, headers={"User-Agent": "hotel-search-private/1.0 (personal use)"})
+                    with urllib.request.urlopen(req, timeout=12) as r:
+                        res = json.loads(r.read().decode("utf-8"))
+                    if res:
+                        lat, lon = float(res[0]["lat"]), float(res[0]["lon"])
+                except Exception:
+                    failed = True  # network trouble: try again next time instead of remembering "not found"
+                time.sleep(1.1)
+                if lat is not None:
+                    break
+            if lat is not None or not failed:
+                with LOCK, db() as con:
+                    con.execute("INSERT OR REPLACE INTO geo (key, lat, lon, ts) VALUES (?,?,?,?)", (key, lat, lon, time.time()))
+            GEO_PENDING.discard(key)
+
+
+def hotel_locations(names, city, country):
+    out = {}
+    with db() as con:
+        for n in names:
+            k = geo_key(n, city)
+            row = con.execute("SELECT lat, lon, ts FROM geo WHERE key=?", (k,)).fetchone()
+            if row and (row["lat"] is not None or time.time() - row["ts"] < 7 * 86400):
+                if row["lat"] is not None:
+                    out[n] = [row["lat"], row["lon"]]
+            elif k not in GEO_PENDING:
+                GEO_PENDING.add(k)
+                GEO_QUEUE.append((k, n, city, country))
+    if GEO_QUEUE:
+        GEO_WAKE.set()
+    return {"locations": out, "pending": len(GEO_PENDING)}
+
+
 WMO = {0: ("Clear", "☀️"), 1: ("Mostly clear", "🌤️"), 2: ("Partly cloudy", "⛅"), 3: ("Overcast", "☁️"),
        45: ("Fog", "🌫️"), 48: ("Fog", "🌫️"), 51: ("Drizzle", "🌦️"), 53: ("Drizzle", "🌦️"), 55: ("Drizzle", "🌦️"),
        56: ("Freezing drizzle", "🌧️"), 57: ("Freezing drizzle", "🌧️"), 61: ("Light rain", "🌧️"),
@@ -260,6 +318,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if p in ("/", "/index.html"):
                 return self._file("index.html")
+            if p == "/favicon.ico":
+                return self._file("icons/favicon.ico")
+            if p == "/manifest.webmanifest":
+                return self._file("manifest.webmanifest")
             if p.startswith("/static/"):
                 return self._file(p[len("/static/"):])
             if p == "/api/health":
@@ -376,6 +438,14 @@ class Handler(BaseHTTPRequestHandler):
                     if body.get("chain"):
                         record_account(con, body["chain"], body.get("signedIn"), body.get("balance"), body.get("tier"))
                 return self._send(200, {"ok": True})
+            if p == "/api/hotel-geo":
+                with db() as con:
+                    row = con.execute("SELECT params FROM searches WHERE id=?", (int(body.get("search", 0)),)).fetchone()
+                if not row:
+                    return self._send(404, {"error": "not found"})
+                prm = json.loads(row["params"])
+                names = [str(n)[:160] for n in (body.get("names") or []) if n][:150]
+                return self._send(200, hotel_locations(names, prm.get("city", ""), prm.get("country", "")))
             if p == "/api/searches/delete":
                 ids = [int(i) for i in (body.get("ids") or [])][:500]
                 with LOCK, db() as con:
@@ -472,5 +542,6 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     init_db()
+    threading.Thread(target=geo_worker, daemon=True).start()
     print(f"Hotel Search running on port {PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

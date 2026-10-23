@@ -1,0 +1,25 @@
+// Loyalty programmes: status tiers, what they get you, and a typical value per point (euro cents)
+// used only to compare cash and points prices. Filled from the programmes' own pages.
+const PROGRAMS = [
+  { id: "Marriott", name: "Marriott Bonvoy", auto: true, centsPerPoint: 0.7,
+    login: "https://www.marriott.com/en-gb/sign-in.mi", site: "https://www.marriott.com/en-gb/loyalty/myAccount/default.mi",
+    tiers: [{ name: "Member", benefits: [] }, { name: "Silver Elite", benefits: [] }, { name: "Gold Elite", benefits: [] },
+            { name: "Platinum Elite", benefits: [] }, { name: "Titanium Elite", benefits: [] }, { name: "Ambassador Elite", benefits: [] }] },
+  { id: "Hilton", name: "Hilton Honors", auto: true, centsPerPoint: 0.4,
+    login: "https://www.hilton.com/en/hilton-honors/login/", site: "https://www.hilton.com/en/hilton-honors/guest/my-account/",
+    tiers: [{ name: "Member", benefits: [] }, { name: "Silver", benefits: [] }, { name: "Gold", benefits: [] }, { name: "Diamond", benefits: [] }] },
+  { id: "IHG", name: "IHG One Rewards", auto: true, centsPerPoint: 0.5,
+    login: "https://www.ihg.com/rewardsclub/us/en/sign-in", site: "https://www.ihg.com/rewardsclub/us/en/account-mgmt/home",
+    tiers: [{ name: "Club Member", benefits: [] }, { name: "Silver Elite", benefits: [] }, { name: "Gold Elite", benefits: [] },
+            { name: "Platinum Elite", benefits: [] }, { name: "Diamond Elite", benefits: [] }] },
+  { id: "ALL Accor", name: "ALL Accor", centsPerPoint: 2,
+    tiers: [{ name: "Classic", benefits: [] }, { name: "Silver", benefits: [] }, { name: "Gold", benefits: [] }, { name: "Platinum", benefits: [] }, { name: "Diamond", benefits: [] }] },
+  { id: "Radisson Rewards", name: "Radisson Rewards", centsPerPoint: 0.3,
+    tiers: [{ name: "Club", benefits: [] }, { name: "Premium", benefits: [] }, { name: "VIP", benefits: [] }] },
+  { id: "MeliáRewards", name: "MeliáRewards", centsPerPoint: 1,
+    tiers: [{ name: "Member", benefits: [] }, { name: "Silver", benefits: [] }, { name: "Gold", benefits: [] }, { name: "Platinum", benefits: [] }] },
+  { id: "GHA DISCOVERY", name: "GHA DISCOVERY", centsPerPoint: null,
+    tiers: [{ name: "Silver", benefits: [] }, { name: "Gold", benefits: [] }, { name: "Platinum", benefits: [] }, { name: "Titanium", benefits: [] }] },
+  { id: "Amex Membership Rewards", name: "Amex Membership Rewards", kind: "bank", centsPerPoint: null, tiers: [],
+    note: "", transfers: [] },
+];
