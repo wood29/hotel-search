@@ -22,6 +22,8 @@ except OSError:
     VERSION = "0.6.0"
 REPO = os.environ.get("UPDATE_REPO", "wood29/hotel-search")  # where one-tap updates come from
 TOKEN_PATH = os.path.join(os.path.dirname(DB_PATH), "github-token")
+TM_KEY_PATH = os.path.join(os.path.dirname(DB_PATH), "ticketmaster-key")
+EVENTS_CACHE = {}  # (lat, lon, start, end) -> (time, result)
 # Hotel sites by web address (the add-on only says which site a page is from).
 SITES = {"marriott.com": "Marriott", "hilton.com": "Hilton", "ihg.com": "IHG"}
 APP_DIR = os.path.join(os.path.dirname(DB_PATH), "app")
@@ -180,6 +182,48 @@ def install_from_github():
     install_update(out.getvalue())
 
 
+# ---------- What's on (Ticketmaster Discovery, free key saved in ⚙︎) ----------
+def events(lat, lon, start, end):
+    key = (round(float(lat), 3), round(float(lon), 3), start, end)
+    hit = EVENTS_CACHE.get(key)
+    if hit and time.time() - hit[0] < 6 * 3600:
+        return hit[1]
+    try:
+        with open(TM_KEY_PATH) as f:
+            api_key = f.read().strip()
+    except OSError:
+        return {"hasKey": False, "events": []}
+    q = urllib.parse.urlencode({"apikey": api_key, "latlong": f"{lat},{lon}", "radius": 20, "unit": "km",
+                                "startDateTime": f"{start}T00:00:00Z", "endDateTime": f"{end}T23:59:59Z",
+                                "size": 60, "sort": "date,asc", "locale": "*"})
+    try:
+        j = fetch_json("https://app.ticketmaster.com/discovery/v2/events.json?" + q, timeout=15)
+    except urllib.error.HTTPError as e:
+        return {"hasKey": True, "events": [], "error": "Ticketmaster didn't accept the key." if e.code in (401, 403) else f"Ticketmaster answered {e.code}."}
+    except Exception:
+        return {"hasKey": True, "events": [], "error": "Couldn't reach Ticketmaster right now."}
+    out, seen = [], set()
+    for ev in (j.get("_embedded") or {}).get("events", []):
+        name = ev.get("name") or ""
+        start_ = (ev.get("dates") or {}).get("start") or {}
+        venue = (((ev.get("_embedded") or {}).get("venues") or [{}])[0]).get("name") or ""
+        cls = (ev.get("classifications") or [{}])[0]
+        seg = (cls.get("segment") or {}).get("name") or ""
+        genre = (cls.get("genre") or {}).get("name") or ""
+        dedupe = (name.lower(), venue.lower())  # one line per show, not one per performance
+        if dedupe in seen:
+            continue
+        seen.add(dedupe)
+        imgs = sorted([i for i in ev.get("images") or [] if i.get("ratio") == "16_9"], key=lambda i: i.get("width", 0))
+        img = next((i["url"] for i in imgs if i.get("width", 0) >= 300), imgs[-1]["url"] if imgs else None)
+        out.append({"name": name, "date": start_.get("localDate"), "time": (start_.get("localTime") or "")[:5],
+                    "venue": venue, "kind": genre if genre and genre != "Undefined" else seg, "segment": seg,
+                    "url": ev.get("url"), "image": img})
+    res = {"hasKey": True, "events": out[:40]}
+    EVENTS_CACHE[key] = (time.time(), res)
+    return res
+
+
 # ---------- Hotel locations for the map ----------
 # Looked up once per hotel on OpenStreetMap (Nominatim, max one request a second as they ask) and kept.
 GEO_QUEUE, GEO_PENDING = [], set()
@@ -335,6 +379,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, res)
             if p == "/api/weather":
                 return self._send(200, weather(q["lat"], q["lon"], q["start"], q["end"]))
+            if p == "/api/events":
+                return self._send(200, events(q["lat"], q["lon"], q["start"], q["end"]))
             if p == "/api/holidays":
                 return self._send(200, holidays(q["cc"], q["start"], q["end"]))
             if p == "/api/searches":
@@ -373,7 +419,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(404, {"error": "not found"})
                 return self._send(200, {"chain": pg["chain"], "text": pg["text"], "links": json.loads(pg["links"] or "[]")[:40]})
             if p == "/api/admin/update-status":
-                info = {"current": VERSION, "repo": REPO, "hasKey": os.path.exists(TOKEN_PATH), "latest": None, "error": None}
+                info = {"current": VERSION, "repo": REPO, "hasKey": os.path.exists(TOKEN_PATH), "latest": None, "error": None,
+                        "hasEventsKey": os.path.exists(TM_KEY_PATH)}
                 if info["hasKey"]:
                     try:
                         info["latest"] = latest_version()
@@ -453,6 +500,15 @@ class Handler(BaseHTTPRequestHandler):
                         for table, col in (("results", "search_id"), ("pages", "search_id"), ("searches", "id")):
                             con.execute(f"DELETE FROM {table} WHERE {col}=?", (i,))
                 return self._send(200, {"ok": True, "deleted": len(ids)})
+            if p == "/api/admin/events-key":
+                k = str(body.get("key", "")).strip()
+                if not re.fullmatch(r"[A-Za-z0-9]{16,64}", k):
+                    return self._send(400, {"error": "That doesn't look like a Ticketmaster Consumer Key."})
+                with open(TM_KEY_PATH, "w") as f:
+                    f.write(k)
+                os.chmod(TM_KEY_PATH, 0o600)
+                EVENTS_CACHE.clear()
+                return self._send(200, {"ok": True})
             if p == "/api/admin/key":
                 token = str(body.get("key", "")).strip()
                 if not re.fullmatch(r"[A-Za-z0-9_]{20,255}", token):

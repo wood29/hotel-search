@@ -114,7 +114,7 @@ async function loadSearch(id, live = false) {
   current = s;
   render();
   if (fresh) {
-    tripInfo(s.params); locate(true);
+    tripInfo(s.params); locate(true); whatsOn(s.params);
     // Show what was searched in the search bar, so a tweak and search again is one step.
     $("city").value = [s.params.city, s.params.country].filter(Boolean).join(", ");
     $("checkIn").value = s.params.checkIn; $("checkOut").value = s.params.checkOut; $("adults").value = String(s.params.adults);
@@ -308,12 +308,60 @@ function highlight(key, sticky) {
 }
 
 // ---------- Weather, holidays, flights ----------
+// ---------- What's on ----------
+let woEvents = [], woKind = "All";
+async function whatsOn(p) {
+  const sid = current && current.id;
+  $("woTitle").textContent = `What's on in ${p.city}`;
+  const month = day(p.checkIn, { month: "long", year: "numeric" });
+  const g = (q) => "https://www.google.com/search?q=" + encodeURIComponent(q);
+  $("woLinks").innerHTML = [
+    [`Google events`, g(`events in ${p.city} ${fmtDates(p)} ${p.checkIn.slice(0, 4)}`) + "&ibp=htl;events"],
+    [`Exhibitions`, g(`exhibitions ${p.city} ${month}`)],
+    [`Trade fairs`, g(`trade fair congress ${p.city} ${month}`)],
+  ].map(([t, u]) => `<a class="t-item link" href="${esc(u)}" target="_blank" rel="noopener">${t} ↗</a>`).join("");
+  $("woList").innerHTML = `<div class="empty small">Looking for events…</div>`;
+  $("woFilter").hidden = true;
+  const r = await api(`/api/events?lat=${p.lat}&lon=${p.lon}&start=${p.checkIn}&end=${p.checkOut}`).catch(() => ({ events: [], error: "Couldn't load events." }));
+  if (!current || current.id !== sid) return;
+  woEvents = r.events || []; woKind = "All";
+  if (!r.hasKey && !r.error) {
+    $("woList").innerHTML = `<div class="empty small">Add a free Ticketmaster key in <button class="text-btn inline-link" type="button" data-open-settings>Settings</button> to list concerts, shows and sports here. The links above work without it.</div>`;
+    $("woList").querySelector("[data-open-settings]").onclick = () => { $("settings").hidden = false; $("evBox").open = true; checkUpdates(); };
+    eventsChip(null); return;
+  }
+  if (r.error) { $("woList").innerHTML = `<div class="empty small">${esc(r.error)}</div>`; eventsChip(null); return; }
+  eventsChip(woEvents.length);
+  drawEvents();
+}
+function drawEvents() {
+  const kinds = ["All", ...new Set(woEvents.map((e) => e.segment).filter((k) => k && k !== "Undefined"))];
+  $("woFilter").hidden = kinds.length < 3;
+  $("woFilter").innerHTML = kinds.map((k) => `<button type="button" class="${k === woKind ? "on" : ""}" data-k="${esc(k)}">${esc(k === "Arts & Theatre" ? "Arts & theatre" : k)}</button>`).join("");
+  $("woFilter").querySelectorAll("button").forEach((b) => b.onclick = () => { woKind = b.dataset.k; drawEvents(); });
+  const list = woEvents.filter((e) => woKind === "All" || e.segment === woKind);
+  $("woList").innerHTML = list.length ? list.map((e) => `<a class="ev" href="${esc(e.url || "#")}" target="_blank" rel="noopener">
+      <div class="ev-img">${e.image ? `<img src="${esc(e.image)}" alt="" loading="lazy">` : ""}</div>
+      <div class="ev-body"><div class="ev-when">${e.date ? day(e.date, { weekday: "short", day: "numeric", month: "short" }) : ""}${e.time ? " · " + esc(e.time) : ""}</div>
+        <div class="ev-name">${esc(e.name)}</div><div class="ev-where">${esc([e.kind, e.venue].filter(Boolean).join(" · "))}</div></div></a>`).join("")
+    : `<div class="empty small">No listed events on these dates — try the links above for exhibitions and fairs.</div>`;
+}
+function eventsChip(n) {
+  const el = document.querySelector(".t-item.events");
+  if (el) el.remove();
+  if (!n) return;
+  const a = document.createElement("a");
+  a.className = "t-item link events"; a.href = "#whatson"; a.textContent = `${n} event${n > 1 ? "s" : ""} on ↓`;
+  a.onclick = (ev) => { ev.preventDefault(); $("whatson").scrollIntoView({ behavior: "smooth", block: "start" }); };
+  $("trip").appendChild(a);
+}
+
 async function tripInfo(p) {
   const from = store.get("hs-from", "Vienna");
   const q = encodeURIComponent(`Flights from ${from} to ${p.city} on ${p.checkIn} through ${p.checkOut}`);
   const parts = { weather: `<span class="t-item muted">Weather…</span>`, hol: "",
     flights: `<a class="t-item link" href="https://www.google.com/travel/flights?q=${q}" target="_blank" rel="noopener">Flights from ${esc(from)} ↗</a>` };
-  const draw = () => { $("trip").innerHTML = parts.weather + parts.hol + parts.flights; };
+  const draw = () => { const ev = document.querySelector(".t-item.events"); $("trip").innerHTML = parts.weather + parts.hol + parts.flights; if (ev) $("trip").appendChild(ev); };
   draw();
   api(`/api/weather?lat=${p.lat}&lon=${p.lon}&start=${p.checkIn}&end=${p.checkOut}`).then((w) => {
     const days = w.days.slice(0, 5).map((d) => `<span class="wd" title="${esc(d.text)} · ${Math.round(d.min)}–${Math.round(d.max)}°${d.rain ? " · " + d.rain.toFixed(1) + " mm" : ""}">
@@ -465,6 +513,7 @@ async function checkUpdates() {
   try {
     const u = await api("/api/admin/update-status");
     $("keyBox").open = !u.hasKey;
+    $("evBox").querySelector("summary").textContent = u.hasEventsKey ? `Ticketmaster key for "What's on" — saved ✓` : `Ticketmaster key for "What's on"`;
     const ready = u.hasKey && !u.error && newer(u.latest, u.current);
     $("latestInfo").textContent = !u.hasKey ? "add your GitHub key for one-tap updates" : u.error ? u.error : ready ? `version ${u.latest} is ready` : "up to date";
     $("ghGo").hidden = !ready;
@@ -479,6 +528,14 @@ $("ghGo").onclick = async () => {
     $("ghMsg").textContent = "Installed. Restarting — the page reloads in a few seconds.";
     setTimeout(() => location.reload(), 6000);
   } catch (e) { $("ghMsg").textContent = e.message; $("ghGo").disabled = false; }
+};
+$("evKeyGo").onclick = async () => {
+  const key = $("evKey").value.trim(); if (!key) return;
+  try {
+    await api("/api/admin/events-key", { method: "POST", body: JSON.stringify({ key }) });
+    $("evKey").value = ""; $("ghMsg").textContent = "Ticketmaster key saved."; $("evBox").open = false;
+    if (current) whatsOn(current.params);
+  } catch (e) { $("ghMsg").textContent = e.message; }
 };
 $("ghKeyGo").onclick = async () => {
   const key = $("ghKey").value.trim(); if (!key) return;

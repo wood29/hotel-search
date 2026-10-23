@@ -95,6 +95,12 @@
         <div id="list" class="list"></div>
         <div class="map-wrap"><div id="map" class="map" aria-label="Map of the hotels"></div><p id="mapNote" class="map-note"></p></div>
       </div>
+
+      <section id="whatson" class="whatson">
+        <div class="sec-head"><h2 id="woTitle">What's on</h2><div id="woLinks" class="wo-links"></div></div>
+        <div id="woFilter" class="seg small" role="group" aria-label="Kind of event" hidden></div>
+        <div id="woList" class="wo-list"></div>
+      </section>
     </section>
 
     <section class="recent">
@@ -132,6 +138,10 @@
     <details id="keyBox"><summary>GitHub key for one-tap updates</summary>
       <p class="note">The read-only key for the <b>hotel-search</b> repository. It stays on your NAS.</p>
       <div class="inline"><input id="ghKey" type="password" autocomplete="off" placeholder="github_pat_…"><button id="ghKeyGo" type="button">Save</button></div>
+    </details>
+    <details id="evBox"><summary>Ticketmaster key for "What's on"</summary>
+      <p class="note">Free from <a href="https://developer.ticketmaster.com/" target="_blank" rel="noopener">developer.ticketmaster.com</a> → My Apps → <i>Consumer Key</i>. It stays on your NAS.</p>
+      <div class="inline"><input id="evKey" type="password" autocomplete="off" placeholder="Consumer Key"><button id="evKeyGo" type="button">Save</button></div>
     </details>
     <details><summary>Install from a file instead</summary>
       <div class="inline"><input id="updFile" type="file" accept=".gz,.tgz,application/gzip"><button id="updGo" type="button">Install</button></div>
