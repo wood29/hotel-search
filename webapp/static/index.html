@@ -122,6 +122,10 @@
       <div class="wo-bar"><div id="woFilter" class="seg small" role="group" aria-label="Kind of event" hidden></div><div id="woLinks" class="wo-links"></div></div>
       <div id="woList" class="wo-list"></div>
     </section>
+    <section class="food">
+      <div class="sec-head"><h2>Top 10 restaurants</h2><span class="note" id="foodNote"></span></div>
+      <ol id="foodList" class="food-list"></ol>
+    </section>
   </section>
 
   <!-- ============ MEMBERSHIPS ============ -->
@@ -157,6 +161,10 @@
     <details id="evBox"><summary>Ticketmaster key for "What's on"</summary>
       <p class="note">Free from <a href="https://developer.ticketmaster.com/" target="_blank" rel="noopener">developer.ticketmaster.com</a> → My Apps → <i>Consumer Key</i>. It stays on your NAS.</p>
       <div class="inline"><input id="evKey" type="password" autocomplete="off" placeholder="Consumer Key"><button id="evKeyGo" type="button">Save</button></div>
+    </details>
+    <details id="gBox"><summary>Google key for "Top 10 restaurants"</summary>
+      <p class="note">From Google Cloud, with the <i>Places API (New)</i> enabled. It stays on your NAS.</p>
+      <div class="inline"><input id="gKey" type="password" autocomplete="off" placeholder="AIza…"><button id="gKeyGo" type="button">Save</button></div>
     </details>
     <details><summary>Install from a file instead</summary>
       <div class="inline"><input id="updFile" type="file" accept=".gz,.tgz,application/gzip"><button id="updGo" type="button">Install</button></div>

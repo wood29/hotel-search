@@ -24,6 +24,8 @@ REPO = os.environ.get("UPDATE_REPO", "wood29/hotel-search")  # where one-tap upd
 TOKEN_PATH = os.path.join(os.path.dirname(DB_PATH), "github-token")
 TM_KEY_PATH = os.path.join(os.path.dirname(DB_PATH), "ticketmaster-key")
 EVENTS_CACHE = {}  # (lat, lon, start, end) -> (time, result)
+GOOGLE_KEY_PATH = os.path.join(os.path.dirname(DB_PATH), "google-key")
+FOOD_CACHE = {}  # (lat, lon) -> (time, result)
 # Hotel sites by web address (the add-on only says which site a page is from).
 SITES = {"marriott.com": "Marriott", "hilton.com": "Hilton", "ihg.com": "IHG", "all.accor.com": "Accor",
          "radissonhotels.com": "Radisson", "melia.com": "Meliá", "ghadiscovery.com": "GHA", "nh-hotels.com": "GHA",
@@ -233,6 +235,51 @@ def events(lat, lon, start, end):
     return res
 
 
+# ---------- Top restaurants (Google Places, key saved in ⚙︎; cached a week per city) ----------
+PRICE = {"PRICE_LEVEL_INEXPENSIVE": "€", "PRICE_LEVEL_MODERATE": "€€", "PRICE_LEVEL_EXPENSIVE": "€€€", "PRICE_LEVEL_VERY_EXPENSIVE": "€€€€"}
+
+
+def restaurants(lat, lon, city):
+    key = (round(float(lat), 2), round(float(lon), 2))
+    hit = FOOD_CACHE.get(key)
+    if hit and time.time() - hit[0] < 7 * 86400:
+        return hit[1]
+    try:
+        with open(GOOGLE_KEY_PATH) as f:
+            api_key = f.read().strip()
+    except OSError:
+        return {"hasKey": False, "places": []}
+    body = json.dumps({"textQuery": f"best restaurants in {city}", "includedType": "restaurant", "maxResultCount": 20,
+                       "locationBias": {"circle": {"center": {"latitude": float(lat), "longitude": float(lon)}, "radius": 6000.0}}}).encode()
+    req = urllib.request.Request("https://places.googleapis.com/v1/places:searchText", data=body, method="POST", headers={
+        "Content-Type": "application/json", "X-Goog-Api-Key": api_key,
+        "X-Goog-FieldMask": "places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.shortFormattedAddress,"
+                            "places.googleMapsUri,places.primaryTypeDisplayName,places.location,places.businessStatus"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            j = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        msg = e.read().decode("utf-8", "replace")[:300]
+        return {"hasKey": True, "places": [], "error": "Google didn't accept the key — check that the Places API (New) is enabled for it." if e.code in (400, 401, 403) else f"Google answered {e.code}.", "detail": msg}
+    except Exception:
+        return {"hasKey": True, "places": [], "error": "Couldn't reach Google right now."}
+    out = []
+    for pl in j.get("places", []):
+        if pl.get("businessStatus") not in (None, "OPERATIONAL"):
+            continue
+        rating, count = pl.get("rating") or 0, pl.get("userRatingCount") or 0
+        # Rank like a careful reader would: a 4.7 with 3,000 reviews beats a 5.0 with 12.
+        score = (rating * count + 4.2 * 300) / (count + 300)
+        out.append({"name": (pl.get("displayName") or {}).get("text"), "rating": rating, "reviews": count,
+                    "price": PRICE.get(pl.get("priceLevel"), ""), "kind": (pl.get("primaryTypeDisplayName") or {}).get("text", ""),
+                    "address": pl.get("shortFormattedAddress", ""), "url": pl.get("googleMapsUri"),
+                    "lat": (pl.get("location") or {}).get("latitude"), "lon": (pl.get("location") or {}).get("longitude"), "score": round(score, 3)})
+    out.sort(key=lambda x: -x["score"])
+    res = {"hasKey": True, "places": out[:10]}
+    FOOD_CACHE[key] = (time.time(), res)
+    return res
+
+
 # ---------- Hotel locations for the map ----------
 # Looked up once per hotel on OpenStreetMap (Nominatim, max one request a second as they ask) and kept.
 GEO_QUEUE, GEO_PENDING = [], set()
@@ -422,6 +469,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, res)
             if p == "/api/weather":
                 return self._send(200, weather(q["lat"], q["lon"], q["start"], q["end"]))
+            if p == "/api/restaurants":
+                return self._send(200, restaurants(q["lat"], q["lon"], q.get("city", "")))
             if p == "/api/events":
                 return self._send(200, events(q["lat"], q["lon"], q["start"], q["end"]))
             if p == "/api/holidays":
@@ -464,7 +513,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"chain": pg["chain"], "text": pg["text"], "links": json.loads(pg["links"] or "[]")[:40]})
             if p == "/api/admin/update-status":
                 info = {"current": VERSION, "repo": REPO, "hasKey": os.path.exists(TOKEN_PATH), "latest": None, "error": None,
-                        "hasEventsKey": os.path.exists(TM_KEY_PATH)}
+                        "hasEventsKey": os.path.exists(TM_KEY_PATH), "hasGoogleKey": os.path.exists(GOOGLE_KEY_PATH)}
                 if info["hasKey"]:
                     try:
                         info["latest"] = latest_version()
@@ -544,6 +593,15 @@ class Handler(BaseHTTPRequestHandler):
                         for table, col in (("results", "search_id"), ("pages", "search_id"), ("searches", "id")):
                             con.execute(f"DELETE FROM {table} WHERE {col}=?", (i,))
                 return self._send(200, {"ok": True, "deleted": len(ids)})
+            if p == "/api/admin/google-key":
+                k = str(body.get("key", "")).strip()
+                if not re.fullmatch(r"AIza[0-9A-Za-z_\-]{30,45}", k):
+                    return self._send(400, {"error": "That doesn't look like a Google API key (it starts with AIza)."})
+                with open(GOOGLE_KEY_PATH, "w") as f:
+                    f.write(k)
+                os.chmod(GOOGLE_KEY_PATH, 0o600)
+                FOOD_CACHE.clear()
+                return self._send(200, {"ok": True})
             if p == "/api/admin/events-key":
                 k = str(body.get("key", "")).strip()
                 if not re.fullmatch(r"[A-Za-z0-9]{16,64}", k):

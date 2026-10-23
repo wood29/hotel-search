@@ -365,6 +365,7 @@ async function whatsOn(p) {
   const r = await api(`/api/events?lat=${p.lat}&lon=${p.lon}&start=${p.checkIn}&end=${p.checkOut}`).catch(() => ({ events: [], error: "Couldn't load events." }));
   if (!current || current.id !== sid) return;
   woEvents = r.events || []; woKind = "All";
+  loadFood(p);
   if (!r.hasKey && !r.error) {
     $("woList").innerHTML = `<div class="empty small">Add a free Ticketmaster key in <button class="text-btn inline-link" type="button" data-open-settings>Settings</button> to list concerts, shows and sports here. The links above work without it.</div>`;
     $("woList").querySelector("[data-open-settings]").onclick = () => { show("settings"); $("evBox").open = true; };
@@ -373,6 +374,24 @@ async function whatsOn(p) {
   if (r.error) { $("woList").innerHTML = `<div class="empty small">${esc(r.error)}</div>`; eventsChip(null); return; }
   eventsChip(woEvents.length);
   drawEvents();
+}
+async function loadFood(p) {
+  const sid = current && current.id;
+  $("foodList").innerHTML = `<li class="empty small">Finding the best-rated restaurants…</li>`; $("foodNote").textContent = "";
+  const r = await api(`/api/restaurants?lat=${p.lat}&lon=${p.lon}&city=${encodeURIComponent(p.city)}`).catch(() => ({ places: [], error: "Couldn't load restaurants." }));
+  if (!current || current.id !== sid) return;
+  if (!r.hasKey && !r.error) {
+    $("foodList").innerHTML = `<li class="empty small">Add a Google key in <button class="text-btn inline-link" type="button" data-open-g>Settings</button> to list the 10 best-rated restaurants here. The Top restaurants link above works without it.</li>`;
+    $("foodList").querySelector("[data-open-g]").onclick = () => { show("settings"); $("gBox").open = true; };
+    return;
+  }
+  if (r.error) { $("foodList").innerHTML = `<li class="empty small">${esc(r.error)}</li>`; return; }
+  $("foodNote").textContent = "Google ratings, weighted by number of reviews";
+  $("foodList").innerHTML = r.places.map((f, i) => `<li class="food-row"><span class="food-n">${i + 1}</span>
+    <div class="food-main"><a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>
+      <span class="food-sub">${esc([f.kind, f.price, f.address].filter(Boolean).join(" · "))}</span></div>
+    <span class="food-rate"><b>${f.rating ? f.rating.toFixed(1).replace(".", ",") : "–"}</b> ★<small>${fmt(f.reviews)} reviews</small></span></li>`).join("")
+    || `<li class="empty small">No restaurants found.</li>`;
 }
 function drawEvents() {
   const kinds = ["All", ...new Set(woEvents.map((e) => e.segment).filter((k) => k && k !== "Undefined"))];
@@ -572,6 +591,7 @@ async function checkUpdates() {
   try {
     const u = await api("/api/admin/update-status");
     $("keyBox").open = !u.hasKey;
+    $("gBox").querySelector("summary").textContent = u.hasGoogleKey ? `Google key for "Top 10 restaurants" — saved ✓` : `Google key for "Top 10 restaurants"`;
     $("evBox").querySelector("summary").textContent = u.hasEventsKey ? `Ticketmaster key for "What's on" — saved ✓` : `Ticketmaster key for "What's on"`;
     const ready = u.hasKey && !u.error && newer(u.latest, u.current);
     $("latestInfo").textContent = !u.hasKey ? "add your GitHub key for one-tap updates" : u.error ? u.error : ready ? `version ${u.latest} is ready` : "up to date";
@@ -594,6 +614,14 @@ $("evKeyGo").onclick = async () => {
     await api("/api/admin/events-key", { method: "POST", body: JSON.stringify({ key }) });
     $("evKey").value = ""; $("ghMsg").textContent = "Ticketmaster key saved."; $("evBox").open = false;
     if (current) whatsOn(current.params);
+  } catch (e) { $("ghMsg").textContent = e.message; }
+};
+$("gKeyGo").onclick = async () => {
+  const key = $("gKey").value.trim(); if (!key) return;
+  try {
+    await api("/api/admin/google-key", { method: "POST", body: JSON.stringify({ key }) });
+    $("gKey").value = ""; $("ghMsg").textContent = "Google key saved."; $("gBox").open = false;
+    if (current) loadFood(current.params);
   } catch (e) { $("ghMsg").textContent = e.message; }
 };
 $("ghKeyGo").onclick = async () => {

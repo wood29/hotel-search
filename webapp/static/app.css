@@ -192,6 +192,21 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px calc(64px + env(saf
 .ev-where { font-size: 13px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inline-link { padding: 0; text-decoration: underline; text-underline-offset: 2px; font-size: inherit; }
 
+/* top restaurants */
+.food { margin-top: 44px; }
+.food-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.food-row { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.food-row:last-child { border-bottom: 0; }
+.food-n { font-family: var(--serif); font-size: 26px; width: 28px; color: var(--brass); text-align: center; flex: none; }
+.food-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.food-main a { font-weight: 600; text-decoration: none; }
+.food-main a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.food-sub { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.food-rate { text-align: right; font-variant-numeric: tabular-nums; color: var(--brass); white-space: nowrap; }
+.food-rate b { color: var(--ink); font-size: 16px; }
+.food-rate small { display: block; color: var(--faint); font-size: 12px; }
+.food-list .empty { list-style: none; }
+
 /* ---------- Recent searches ---------- */
 .recent { margin-top: 56px; }
 .sec-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
