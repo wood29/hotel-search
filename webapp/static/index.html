@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <title>Hotel Search</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1>Hotel Search</h1>
+      <p class="sub">Your member prices, points and trip details in one place.</p>
+    </div>
+    <div class="top-right">
+      <span id="addon" class="pill">Checking add-on…</span>
+      <button id="gear" class="icon" type="button" aria-label="Settings">⚙︎</button>
+    </div>
+  </header>
+
+  <section id="settings" class="card settings" hidden>
+    <h2>Settings</h2>
+    <p class="hint">Web app version <b id="version">…</b> · <span id="latestInfo">checking for updates…</span></p>
+    <div class="row"><button id="ghGo" type="button" hidden>Install update</button></div>
+    <p id="ghMsg" class="hint"></p>
+    <details id="keyBox">
+      <summary class="hint">GitHub key for one-tap updates</summary>
+      <p class="hint">Paste the read-only key you created for the <b>hotel-search</b> repository. It stays on your NAS.</p>
+      <div class="row"><input id="ghKey" type="password" autocomplete="off" placeholder="github_pat_…"><button id="ghKeyGo" type="button">Save key</button></div>
+    </details>
+    <details>
+      <summary class="hint">Install from a file instead</summary>
+      <div class="row"><input id="updFile" type="file" accept=".gz,.tgz,application/gzip"><button id="updGo" type="button">Install file</button></div>
+    </details>
+    <p id="updMsg" class="hint"></p>
+    <p class="hint">Reader add-on for this browser: <a id="addonLink" href="/static/hotel-search-addon.zip" download>Download add-on (.zip)</a> — needed once per browser (Chrome on PC, Orion on iPad). <span id="addonAdvice"></span></p>
+  </section>
+
+  <form id="search" class="card form">
+    <label class="city">Where
+      <input id="city" required placeholder="City, e.g. Paris" autocomplete="off" list="citylist">
+      <datalist id="citylist"></datalist>
+    </label>
+    <label>Check-in <input id="checkIn" type="date" required></label>
+    <label>Check-out <input id="checkOut" type="date" required></label>
+    <label class="small">Guests
+      <select id="adults"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+    </label>
+    <button id="go" type="submit">Search</button>
+    <p id="place" class="hint"></p>
+  </form>
+
+  <section id="trip" class="trip" hidden>
+    <div class="card tile" id="weather"></div>
+    <div class="card tile" id="extras"></div>
+  </section>
+
+  <h2 id="resultsTitle" class="results-title" hidden></h2>
+  <section id="sources" class="sources" hidden></section>
+  <p id="warn" class="warn" hidden></p>
+
+  <section id="resultsWrap" hidden>
+    <div class="toolbar">
+      <span id="count"></span>
+      <div class="controls">
+        <div id="chainFilter" class="seg"></div>
+        <select id="maxKm" aria-label="Distance from centre">
+          <option value="">Any distance</option>
+          <option value="2">Within 2 km</option>
+          <option value="5">Within 5 km</option>
+          <option value="10">Within 10 km</option>
+          <option value="20">Within 20 km</option>
+        </select>
+        <label class="check"><input id="noAirport" type="checkbox"> Hide airport hotels</label>
+        <select id="sort" aria-label="Sort">
+          <option value="cash">Lowest price</option>
+          <option value="dist">Nearest to centre</option>
+          <option value="points">Fewest points</option>
+          <option value="chain">Chain</option>
+        </select>
+      </div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Hotel</th><th>Chain</th><th class="num">Distance</th><th class="num">Per night</th><th class="num">Total</th><th class="num">Points</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>Points &amp; accounts</h2>
+      <p class="hint">Marriott, Hilton and IHG update automatically when you search while signed in. Tap a balance to update the others.</p>
+    </div>
+    <div id="points" class="points"></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><h2>Recent searches</h2></div>
+    <div id="history" class="history"></div>
+  </section>
+</main>
+<script src="/static/urls.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
