@@ -213,6 +213,13 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px calc(64px + env(saf
 .prog.compact .bal { font-size: 30px; }
 .prog.compact footer:not(:has(select:not([hidden]))) { display: none; }
 .prog header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.p-id { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.p-mono { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font: 700 11px/1 var(--sans); letter-spacing: .04em;
+  color: var(--ink-2); background: var(--sunk); border: 1px solid var(--line); }
+.p-mono.t-marriott { color: var(--c-marriott); background: color-mix(in srgb, var(--c-marriott) 10%, var(--surface)); border-color: color-mix(in srgb, var(--c-marriott) 22%, var(--surface)); }
+.p-mono.t-hilton { color: var(--c-hilton); background: color-mix(in srgb, var(--c-hilton) 10%, var(--surface)); border-color: color-mix(in srgb, var(--c-hilton) 22%, var(--surface)); }
+.p-mono.t-ihg { color: var(--c-ihg); background: color-mix(in srgb, var(--c-ihg) 10%, var(--surface)); border-color: color-mix(in srgb, var(--c-ihg) 22%, var(--surface)); }
+.prog.compact .p-mono { width: 30px; height: 30px; border-radius: 8px; font-size: 10px; }
 .prog h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.005em; }
 .state { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .state.ok { color: var(--ok); } .state.no { color: var(--warn); }

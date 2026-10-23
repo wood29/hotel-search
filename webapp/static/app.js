@@ -457,7 +457,7 @@ async function loadPoints() {
     const value = l && p.centsPerPoint ? `≈ ${eur((l.balance * p.centsPerPoint) / 100)}` : "";
     const delta = prev && l ? `${l.balance >= prev.balance ? "+" : "−"}${fmt(Math.abs(l.balance - prev.balance))} since ${ago(prev.ts)}` : l ? `updated ${ago(l.ts)}` : "";
     return `<article class="prog${p.auto ? "" : " compact"}" data-p="${esc(p.id)}">
-      <header><div><h3>${esc(p.name)}</h3>${state}</div>
+      <header><div class="p-id"><span class="p-mono t-${esc(p.tone || "plain")}" aria-hidden="true">${esc(p.mono || "")}</span><div><h3>${esc(p.name)}</h3>${state}</div></div>
         <button class="tier-badge ${tier ? "t" + Math.min(ti, 5) : "none"}" data-tier-edit="${esc(p.id)}" type="button" title="Change status">${tier ? esc(tier.name) : "Set status"}</button></header>
       <div class="bal-row">
         <button class="bal" type="button" data-bal="${esc(p.id)}" title="${p.auto ? "Fills in when you search signed in — tap to correct" : "Tap to update"}">${l ? fmt(l.balance) : "—"}<small>${l ? " " + (p.unit || "pts") : ""}</small></button>
