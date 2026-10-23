@@ -25,7 +25,16 @@ TOKEN_PATH = os.path.join(os.path.dirname(DB_PATH), "github-token")
 TM_KEY_PATH = os.path.join(os.path.dirname(DB_PATH), "ticketmaster-key")
 EVENTS_CACHE = {}  # (lat, lon, start, end) -> (time, result)
 # Hotel sites by web address (the add-on only says which site a page is from).
-SITES = {"marriott.com": "Marriott", "hilton.com": "Hilton", "ihg.com": "IHG"}
+SITES = {"marriott.com": "Marriott", "hilton.com": "Hilton", "ihg.com": "IHG", "all.accor.com": "Accor",
+         "radissonhotels.com": "Radisson", "melia.com": "Meliá", "ghadiscovery.com": "GHA", "nh-hotels.com": "GHA",
+         "americanexpress.com": "Amex"}
+
+
+def stay_nights(prm):
+    try:
+        return max(1, (date.fromisoformat(prm["checkOut"]) - date.fromisoformat(prm["checkIn"])).days)
+    except Exception:
+        return 1
 APP_DIR = os.path.join(os.path.dirname(DB_PATH), "app")
 
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -438,7 +447,8 @@ class Handler(BaseHTTPRequestHandler):
                     pg = pages.get(r["key"])
                     if pg and r["status"] in ("done", "empty", "none", "timeout"):
                         # Read the saved page again, so reader fixes also improve earlier searches.
-                        rd = readers.read_page(pg["chain"], pg["text"] or "", json.loads(pg["links"] or "[]"))
+                        rd = readers.read_page(pg["chain"], pg["text"] or "", json.loads(pg["links"] or "[]"),
+                                               stay_nights(json.loads(row["params"])))
                         item["hotels"] = rd["hotels"]
                         item["status"] = "done" if rd["hotels"] else "none" if rd.get("noneFound") else "empty"
                     out.append(item)
@@ -558,7 +568,13 @@ class Handler(BaseHTTPRequestHandler):
                 chain = str(body.get("chain", ""))[:40]
                 text = str(body.get("text") or "")[:400000]
                 links = body.get("links") or []
-                rd = readers.read_page(chain, text, links if isinstance(links, list) else [])
+                nights = 1
+                if body.get("searchId"):
+                    with db() as con:
+                        r0 = con.execute("SELECT params FROM searches WHERE id=?", (int(body["searchId"]),)).fetchone()
+                    if r0:
+                        nights = stay_nights(json.loads(r0["params"]))
+                rd = readers.read_page(chain, text, links if isinstance(links, list) else [], nights)
                 reply = {"hotels": len(rd["hotels"]), "expected": rd["expected"], "blocked": rd["blocked"]}
                 if body.get("final") and body.get("searchId") and body.get("key"):
                     sid, key = int(body["searchId"]), str(body["key"])[:40]
@@ -591,7 +607,12 @@ class Handler(BaseHTTPRequestHandler):
                 a = readers.ACCOUNT[chain](str(body.get("text") or "")[:6000])
                 if a["signedIn"] is not None:
                     with LOCK, db() as con:
-                        record_account(con, chain, a["signedIn"], a["balance"], a["tier"])
+                        if chain == "Amex":  # Amex points are kept under their programme name
+                            record_account(con, chain, a["signedIn"], None, None)
+                            if a["signedIn"] and isinstance(a["balance"], (int, float)):
+                                record_points(con, "Amex Membership Rewards", a["balance"], "auto")
+                        else:
+                            record_account(con, chain, a["signedIn"], a["balance"], a["tier"])
                 return self._send(200, {"ok": True, **a})
             if p == "/api/debug":
                 DEBUG.append({"t": round(time.time(), 1), **{k: str(v)[:(15000 if k == "text" else 400)] for k, v in body.items()}})

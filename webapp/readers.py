@@ -36,7 +36,7 @@ def lines_of(text):
 
 def dist_km(s):
     """Distance as printed: '1.4 km from destination', '0.64 miles', '1.53 km (0.95mi) from destination'."""
-    km = re.search(r"(\d+(?:[.,]\d+)?)\s*km\b", s, re.I)
+    km = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:km|kilomet(?:er|re)s?)\b", s, re.I)
     if km:
         return round(float(km[1].replace(",", ".")) * 10) / 10
     mi = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:miles?|mi)\b", s, re.I)
@@ -186,7 +186,97 @@ def ihg(text):
     return {"hotels": hotels, **account_ihg(text), "expected": int(found[1]) if found else None}
 
 
-LISTS = {"Marriott": marriott, "Hilton": hilton, "IHG": ihg}
+CUR = {"£": "GBP", "€": "EUR", "$": "USD", "EUR": "EUR", "GBP": "GBP", "USD": "USD", "CHF": "CHF"}
+MONEY = r"(?:(£|€|\$|EUR|GBP|USD|CHF)\s?@N|@N\s?(€|EUR))"
+
+
+def money(m):
+    """(amount, currency) from a MONEY match."""
+    if not m:
+        return None, None
+    amt = m.group(2) if m.group(1) else m.group(3)
+    cur = m.group(1) or m.group(4)
+    return num(amt), CUR.get(cur, cur)
+
+
+def account_generic(text):
+    """Sign-in state for sites without a dedicated reader: an account greeting or a sign-out link."""
+    head = text[:1500]
+    if re.search(r"\b(Sign out|Log out|Logout|Abmelden|My account|Mein Konto|Hello,|Hi,|Hallo,)", head, re.I):
+        return {"signedIn": True, "balance": None, "tier": None}
+    if re.search(r"\b(Sign in|Log in|Login|Anmelden|Join now|Become a member)\b", head, re.I):
+        return {"signedIn": False, "balance": None, "tier": None}
+    return {"signedIn": None, "balance": None, "tier": None}
+
+
+# ---------- ALL Accor (destination list; prices are for the whole stay) ----------
+def accor(text, nights=1):
+    hotels = []
+    chunks = re.split(r"See the hotel|See availability", text)
+    for ch in chunks:
+        lines = lines_of(ch)
+        idx = next((i for i, l in enumerate(lines) if re.search(r"km from your search|mi from your search", l)), -1)
+        if idx < 0:
+            continue
+        name = None
+        for l in reversed(lines[:idx]):
+            if re.fullmatch(r"\d+(\.\d)?|\d+/\d+|\d(\.\d)?/5|\(\d[\d,.]* reviews\)|Hotel|Hotels|Aparthotels?|Resort|Apartments?|Hostel", l):
+                continue
+            name = l
+            break
+        seg = "\n".join(lines[idx:])
+        total, cur = money(rx(r"From\s+" + MONEY).search(seg))
+        public, _ = money(rx(r"Public rate from\s+" + MONEY).search(seg))
+        hotels.append({"name": name, "distanceKm": dist_km(lines[idx]),
+                       "cashTotal": total, "cashPerNight": round(total / nights) if total else None, "currency": cur,
+                       "points": None, "soldOut": "Unavailable for the selected dates" in seg,
+                       "rate": {"name": "Member rate" if "Member rate" in seg else "Public rate",
+                                "member": "Member rate" in seg, "prepaid": False, "breakfast": "Breakfast included" in seg,
+                                "publicTotal": public} if total else None})
+    found = re.search(r"(\d+) hotels? (?:are|is) available", text)
+    return {"hotels": hotels, **account_generic(text), "expected": int(found[1]) if found else None}
+
+
+# ---------- Radisson Rewards (destination list; prices per night) ----------
+def radisson(text):
+    hotels = []
+    for ch in re.split(r"Includes taxes & fees|CHECK AVAILABILITY", text):
+        lines = lines_of(ch)
+        idx = next((i for i, l in enumerate(lines) if re.search(r"(kilometers|km) from central|miles? from central", l)), -1)
+        if idx < 0:
+            continue
+        name = None
+        for l in reversed(lines[:idx]):
+            if l == "|" or re.fullmatch(r"[\d,.]+ reviews?", l):
+                continue
+            name = l
+            break
+        seg = "\n".join(lines[idx:])
+        price, cur = money(rx(r"From\s*\n?\s*" + MONEY).search(seg))
+        hotels.append({"name": name, "distanceKm": dist_km(lines[idx].split("/")[-1]),
+                       "cashPerNight": price, "currency": cur, "points": None,
+                       "soldOut": bool(re.search(r"Opening soon|Sold out|No availability", seg, re.I)) and not price,
+                       "rate": {"name": "Members' rate" if "Members' rate" in seg else "Standard rate",
+                                "member": "Members' rate" in seg, "prepaid": False} if price else None})
+    found = re.search(r"Showing (\d+) results", text)
+    return {"hotels": hotels, **account_generic(text), "expected": int(found[1]) if found else None}
+
+
+LISTS = {"Marriott": marriott, "Hilton": hilton, "IHG": ihg, "Accor": accor, "Radisson": radisson}
+def account_amex(text):
+    """Only ever sees the Membership Rewards lines the add-on picked out (see the add-on's page.js)."""
+    bal = (rx(r"Membership Rewards[^\n]{0,40}\n?[^\n]{0,20}?@N").search(text)
+           or rx(r"@N\s*(?:Membership Rewards[®]?\s*)?(?:Punkte|points)\b", re.I).search(text))
+    # Only trust a number when the page also shows you're signed in — public Amex pages advertise
+    # "50,000 Punkte" welcome bonuses that must never be mistaken for your balance.
+    logged_in = bool(re.search(r"^(Abmelden|Log ?out|Sign ?out)$", text, re.M | re.I))
+    logged_out = bool(re.search(r"^(Anmelden|Log ?in|Sign ?in)$", text, re.M | re.I))
+    signed_in = True if logged_in else False if logged_out else None
+    v = num(bal[1]) if bal and logged_in else None
+    return {"signedIn": signed_in, "balance": v if v and v >= 1 else None, "tier": None}
+
+
+ACCOUNT.update({"Amex": account_amex, "Accor": account_generic, "Radisson": account_generic, "Meliá": account_generic, "GHA": account_generic})
 
 
 def blocked(text):
@@ -220,14 +310,14 @@ def attach_links(hotels, links):
     return hotels
 
 
-def read_page(chain, text, links=None):
+def read_page(chain, text, links=None, nights=1):
     """Everything the NAS needs from one results page."""
     if blocked(text):
         return {"blocked": True, "noneFound": False, "hotels": [], "expected": None, "signedIn": None, "balance": None, "tier": None}
     fn = LISTS.get(chain)
     if not fn:
         return {"blocked": False, "noneFound": False, "hotels": [], "expected": None, "signedIn": None, "balance": None, "tier": None}
-    r = fn(text)
+    r = fn(text, nights) if chain == "Accor" else fn(text)
     attach_links(r["hotels"], links)
     r["blocked"] = False
     # The site itself says there's nothing for these dates (e.g. no reward nights) — not a reading problem.

@@ -35,6 +35,10 @@ const HotelUrls = (() => {
       "qSrt=sAV", "qBrs=", "qPSt=0",
     ].join("&");
 
+    const slug = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const accor = `https://all.accor.com/booking/en/accor/hotels/${slug(p.city)}-${slug(p.country)}?dateIn=${p.checkIn}&nights=${n}&compositions=${p.adults}&stayplus=false&snu=false`;
+    const radisson = `https://www.radissonhotels.com/en-us/destination/${slug(p.country)}/${slug(p.city)}?checkInDate=${p.checkIn}&checkOutDate=${p.checkOut}&adults%5B%5D=${p.adults}&children%5B%5D=0`;
+
     return [
       // searchPath: how to recognise the results page if the site rewrites the address;
       // marker: what tells the cash and the points page of the same site apart ("!" = must not contain).
@@ -43,10 +47,22 @@ const HotelUrls = (() => {
       { key: "hilton-points", chain: "Hilton", kind: "points", url: hiltonBase + "&redeemPts=true", searchPath: "/search/", marker: "redeemPts=true" },
       { key: "ihg-cash", chain: "IHG", kind: "cash", url: ihgBase + "&qRtP=6CBARC", searchPath: "hotel-search", marker: "qRtP=6CBARC" },
       { key: "ihg-points", chain: "IHG", kind: "points", url: ihgBase + "&qRtP=IVANI", searchPath: "hotel-search", marker: "qRtP=IVANI" },
+      { key: "accor", chain: "Accor", kind: "cash", url: accor, searchPath: "/hotels/" },
+      { key: "radisson", chain: "Radisson", kind: "cash", url: radisson, searchPath: "/destination/" },
     ];
   }
 
-  return { build, nights };
+  // Sites that can't be read automatically yet: shown as links with the city filled in.
+  function links(p) {
+    const slug = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return [
+      { chain: "Meliá", url: `https://www.melia.com/en/hotels/${slug(p.country)}/${slug(p.city)}` },
+      { chain: "NH", url: `https://www.nh-hotels.com/en/hotels/${slug(p.city)}` },
+      { chain: "GHA", url: `https://www.ghadiscovery.com/` },
+    ];
+  }
+
+  return { build, nights, links };
 })();
 
 if (typeof module !== "undefined") module.exports = HotelUrls;

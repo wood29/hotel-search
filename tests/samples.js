@@ -392,3 +392,155 @@ View hotel details for DoubleTree by Hilton Rome MontiView hotel details
 
 Points for first night
 View Rates`;
+module.exports.accor = `Rome, Metropolitan City of Rome Capital, Italy
+Oct 29
+Oct 31
+2 people - 1 room
+Edit
+18 hotels are available.
+Sorted by recommended for you
+
+1/77
+
+Orient Express La Minerva
+Hotel
+5
+0.40 km from your search
+
+points
+
+Breakfast included
+
+Member rate
+
+From £2,865
+
+Public rate from £3,014
+
+2 nights
+2 adults
+Taxes and fees included.
+See price calendar
+See the hotel
+
+1/46
+
+JO&JOE Roma
+Hotel
+
+4.5/5
+(1159 reviews)
+
+0.98 km from your search
+
+Ecocertified
+
+points
+
+From £412
+
+2 nights
+2 adults
+Taxes and fees included.
+See price calendar
+See the hotel
+
+1/41
+
+Mercure Roma Centro Termini
+Hotel
+4
+
+4.2/5
+(756 reviews)
+
+1.01 km from your search
+
+Family friendly
+
+points
+
+Member rate
+
+From £599
+
+Public rate from £662
+
+2 nights
+2 adults
+Taxes and fees included.
+See price calendar
+See the hotel
+Save up to 10% on this booking with the member rate.
+Sign up for free
+
+1/118
+
+Mama Shelter Roma
+Hotel
+4
+
+4.4/5
+(831 reviews)
+
+3.32 km from your search
+
+Ecocertified
+
+Family friendly
+
+points
+
+Unavailable for the selected dates
+
+See availability`;
+module.exports.radisson = `Hotels in Rome
+FILTERS
+
+Showing 5 results
+
+Palazzo Montemartini Rome, A Radisson Collection Hotel
+|
+1,382 reviews
+0.21 miles/0.35 kilometers from central Rome
+Historical building
+Gourmet dining
+Members' rate
+-16%
+EUR 517
+From
+EUR 434
+/night
+Includes taxes & fees
+art'otel Rome Via Veneto
+|
+61 reviews
+0.46 miles/0.75 kilometers from central Rome
+Central location
+Art & design
+Members' rate
+-17%
+EUR 609
+From
+EUR 503
+/night
+Includes taxes & fees
+Radisson Blu GHR Hotel, Rome
+|
+1,104 reviews
+1.8 miles/2.89 kilometers from central Rome
+Close to tourist attractions
+Gourmet dining
+Members' rate
+-35%
+EUR 411
+From
+EUR 269
+/night
+Includes taxes & fees
+Palazzo Sanzio Rome, A Radisson Collection Hotel
+1.47 miles/2.37 kilometers from central Rome
+Central location
+On-site dining
+Opening soon - Expected November 2026
+CHECK AVAILABILITY`;

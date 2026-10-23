@@ -135,12 +135,16 @@
     <section id="amex" class="amex"></section>
     <p class="fineprint">Point values are rough averages for comparing programmes, not a quote. Benefits as published by each programme; check the official terms before you rely on them.</p>
   </section>
-</main>
-
-<!-- ============ SETTINGS ============ -->
-<div id="settings" class="sheet" hidden>
-  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="setTitle">
-    <div class="sheet-head"><h2 id="setTitle">Settings</h2><button id="setClose" class="icon-btn" type="button" aria-label="Close">✕</button></div>
+  <!-- ============ SETTINGS ============ -->
+  <section id="view-settings" class="view" hidden>
+    <div class="m-hero">
+      <p class="eyebrow">Settings</p>
+      <h1 class="display big">Sign-ins</h1>
+      <p class="lede">Sign in once on each site in this browser — searches then show your member prices and points.</p>
+    </div>
+    <div id="signins" class="signins"></div>
+    <h2 class="sub-head">App</h2>
+    <div class="set-card">
     <div class="set-row"><div><b>Web app</b><p class="note">Version <span id="version">…</span> · <span id="latestInfo">checking…</span></p></div>
       <button id="ghGo" type="button" class="primary" hidden>Install update</button></div>
     <p id="ghMsg" class="note"></p>
@@ -159,8 +163,9 @@
     </details>
     <p id="updMsg" class="note"></p>
     <div class="set-row"><div><b>Flights from</b><p class="note">Used for the Google Flights link.</p></div><input id="fromCity" class="small-input" placeholder="Vienna"></div>
-  </div>
-</div>
+    </div>
+  </section>
+</main>
 
 <script src="/static/vendor/leaflet/leaflet.js"></script>
 <script src="/static/urls.js"></script>

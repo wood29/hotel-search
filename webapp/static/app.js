@@ -22,17 +22,22 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ==
                 set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } } };
 const AIRPORT = /airport|a[ée]roport|aeroporto|flughafen|aeropuerto|\bCDG\b|orly|roissy|schiphol|heathrow|gatwick|stansted|luton|fiumicino|malpensa|barajas|el prat|brandenburg|\bBER\b|schwechat|\bVIE\b|\bJFK\b|\bLAX\b|\bLHR\b/i;
 const P = Object.fromEntries(PROGRAMS.map((p) => [p.id, p]));
+P.Accor = P["ALL Accor"]; P.Radisson = P["Radisson Rewards"]; // chain name in results → its programme
+const SYM = { EUR: "€", GBP: "£", USD: "$", CHF: "CHF " };
+const money = (n, c) => (n == null ? "" : (SYM[c || "EUR"] || (c + " ")) + Math.round(n).toLocaleString(LOCALE));
 const STATUS = { waiting: "Waiting", loading: "Reading", done: "Done", empty: "Nothing read", none: "No hotels offered",
                  timeout: "Took too long", blocked: "Site refused", manual: "Open to check" };
 
 // ---------- Views ----------
 function show(view) {
-  for (const v of ["search", "whatson", "members"]) $("view-" + v).hidden = v !== view;
+  for (const v of ["search", "whatson", "members", "settings"]) $("view-" + v).hidden = v !== view;
+  $("gear").classList.toggle("on", view === "settings");
   document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
   if (view === "members") loadPoints();
   if (view === "whatson") openWhatsOn();
+  if (view === "settings") { loadSignins(); checkUpdates(); }
   if (view === "search" && mapObj) setTimeout(() => mapObj.invalidateSize(), 50);
-  history.replaceState(null, "", view === "members" ? "#memberships" : view === "whatson" ? "#whatson" : location.pathname);
+  history.replaceState(null, "", view === "search" ? location.pathname : "#" + (view === "members" ? "memberships" : view));
 }
 document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => show(b.dataset.view));
 
@@ -142,6 +147,7 @@ function buildRows(s) {
     if (h.cashPerNight != null && r.kind !== "points") row.cash = h.cashPerNight;
     if (h.cashTotal != null && r.kind !== "points") row.total = h.cashTotal;
     if (h.rate && r.kind !== "points") row.rate = h.rate;
+    if (h.currency && r.kind !== "points") row.currency = h.currency;
     if (h.points != null && r.kind !== "cash") { row.points = h.points; row.unit = h.pointsUnit; }
     if (h.soldOut) row.soldOut = true;
     if (h.pointsLimited && r.kind !== "cash") row.pointsLimited = true;
@@ -159,7 +165,7 @@ function buildRows(s) {
       r.verdict = typical ? (r.cpp >= typical * 1.25 ? "great" : r.cpp >= typical * 0.85 ? "fair" : "poor") : null;
     }
   }
-  const bookable = rows.filter((r) => !r.soldOut && r.cash != null);
+  const bookable = rows.filter((r) => !r.soldOut && r.cash != null && (r.currency || "EUR") === "EUR");
   const cheapest = bookable.reduce((a, b) => (a && a.cash <= b.cash ? a : b), null);
   const bestValue = rows.filter((r) => r.verdict === "great").reduce((a, b) => (a && a.cpp >= b.cpp ? a : b), null);
   if (cheapest) cheapest.best = "Lowest price";
@@ -184,8 +190,9 @@ function render() {
   const busy = states.filter((x) => ["waiting", "loading"].includes(x.st)).length;
   $("sources").innerHTML = `<span class="src-sum">${busy ? `<span class="spin"></span>Reading ${jobs.length - busy} of ${jobs.length} sites…` : `${jobs.length} sites`}</span>` +
     states.map(({ j, st, r }) => `<a class="src ${st}" href="${esc(j.url)}" target="_blank" rel="noopener" title="${esc(STATUS[st] || st)} — open ${esc(j.chain)}">
-      <i class="c-${j.chain.toLowerCase()}"></i>${esc(j.chain)}${j.kind === "cash+points" ? "" : `<em>${j.kind}</em>`}
-      <b>${st === "done" ? (r.hotels || []).length : esc(STATUS[st] || st)}</b></a>`).join("");
+      <i class="c-${j.chain.toLowerCase()}"></i>${esc(j.chain)}${j.key.includes("-") ? `<em>${j.kind}</em>` : ""}
+      <b>${st === "done" ? (r.hotels || []).length : esc(STATUS[st] || st)}</b></a>`).join("") +
+    HotelUrls.links(s.params).map((l) => `<a class="src link" href="${esc(l.url)}" target="_blank" rel="noopener" title="Not read automatically — opens ${esc(l.chain)}"><i></i>${esc(l.chain)}<b>open ↗</b></a>`).join("");
 
   const out = [...new Set(s.results.filter((r) => r.signedIn === false).map((r) => r.chain))];
   $("warn").hidden = !out.length;
@@ -238,7 +245,7 @@ function card(r) {
       <div class="h-sub"><span class="chain"><i class="c-${r.chain.toLowerCase()}"></i>${esc(r.chain)}</span>${sub ? `<span>${esc(sub)}</span>` : ""}</div>
     </div>
     <div class="h-cash">${r.soldOut ? `<span class="sold-label">Sold out</span>` : r.cash != null
-      ? `<div class="amt">${eur(r.cash)}<small> / night</small></div><div class="sub">${eur(r.total)} total</div>${rateTag(r)}` : `<div class="none" title="No cash rate read">—</div>`}</div>
+      ? `<div class="amt">${money(r.cash, r.currency)}<small> / night</small></div><div class="sub">${money(r.total, r.currency)} total</div>${rateTag(r)}` : `<div class="none" title="No cash rate read">—</div>`}</div>
     <div class="h-pts">${r.points != null
       ? `<div class="amt">${fmt(r.points)}<small> pts</small></div><div class="sub">${unit}${r.pointsLimited ? " · not all nights" : ""} ${v}</div>`
       : r.soldOut ? "" : `<div class="none" title="No points rate read">—</div>`}</div>
@@ -297,7 +304,7 @@ function drawMarkers() {
   markers.__centre = L.marker(centre, { icon: pin, interactive: false, keyboard: false }).addTo(mapObj);
   for (const r of rowsNow) {
     const c = coords[r.name]; if (!c) continue;
-    const text = r.soldOut ? "Sold out" : r.cash != null ? eur(r.cash) : r.points != null ? kpts(r.points) : "";
+    const text = r.soldOut ? "Sold out" : r.cash != null ? money(r.cash, r.currency) : r.points != null ? kpts(r.points) : "";
     const icon = L.divIcon({ className: "", html: `<span class="mk ${r.soldOut ? "sold" : ""} ${r.bestPts ? "brass" : ""}" data-k="${esc(r.key)}">${badge(r)}${text}</span>`, iconSize: null });
     const m = L.marker(c, { icon, riseOnHover: true }).addTo(mapObj);
     m.bindTooltip(`<b>${esc(r.name)}</b><br>${esc(r.chain)}${r.points != null ? " · " + fmt(r.points) + " pts" : ""}`, { direction: "top", offset: [0, -14] });
@@ -350,6 +357,8 @@ async function whatsOn(p) {
     [`Google events`, g(`events in ${p.city} ${fmtDates(p)} ${p.checkIn.slice(0, 4)}`) + "&ibp=htl;events"],
     [`Exhibitions`, g(`exhibitions ${p.city} ${month}`)],
     [`Trade fairs`, g(`trade fair congress ${p.city} ${month}`)],
+    [`Top restaurants`, "https://www.google.com/maps/search/" + encodeURIComponent(`best restaurants in ${p.city}`)],
+    [`Michelin Guide`, g(`Michelin Guide restaurants ${p.city}`)],
   ].map(([t, u]) => `<a class="t-item link" href="${esc(u)}" target="_blank" rel="noopener">${t} ↗</a>`).join("");
   $("woList").innerHTML = `<div class="empty small">Looking for events…</div>`;
   $("woFilter").hidden = true;
@@ -358,7 +367,7 @@ async function whatsOn(p) {
   woEvents = r.events || []; woKind = "All";
   if (!r.hasKey && !r.error) {
     $("woList").innerHTML = `<div class="empty small">Add a free Ticketmaster key in <button class="text-btn inline-link" type="button" data-open-settings>Settings</button> to list concerts, shows and sports here. The links above work without it.</div>`;
-    $("woList").querySelector("[data-open-settings]").onclick = () => { $("settings").hidden = false; $("evBox").open = true; checkUpdates(); };
+    $("woList").querySelector("[data-open-settings]").onclick = () => { show("settings"); $("evBox").open = true; };
     eventsChip(null); return;
   }
   if (r.error) { $("woList").innerHTML = `<div class="empty small">${esc(r.error)}</div>`; eventsChip(null); return; }
@@ -469,7 +478,7 @@ async function loadPoints() {
     const tier = ti >= 0 ? p.tiers[ti] : null, next = ti >= 0 ? p.tiers[ti + 1] : null;
     const fresh = a.checked && Date.now() / 1000 - a.checked < 3600;
     const signedNow = a.signedIn === true && fresh;
-    const state = !p.auto ? "" : signedNow ? `<span class="state ok">Signed in</span>` : a.signedIn === false && fresh ? `<span class="state no">Signed out</span>` : `<span class="state">Sign in before searching</span>`;
+    const state = "";
     const value = l && p.centsPerPoint ? `≈ ${eur((l.balance * p.centsPerPoint) / 100)}` : "";
     const delta = prev && l ? `${l.balance >= prev.balance ? "+" : "−"}${fmt(Math.abs(l.balance - prev.balance))} since ${ago(prev.ts)}` : l ? `updated ${ago(l.ts)}` : "";
     return `<article class="prog${p.auto ? "" : " compact"}" data-p="${esc(p.id)}">
@@ -482,7 +491,7 @@ async function loadPoints() {
       <p class="meta">${esc(delta)}</p>
       ${tier && tier.benefits.length ? `<ul class="perks">${tier.benefits.slice(0, 4).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : p.auto && !tier ? `<p class="meta">Set your status to see what it gets you.</p>` : ""}
       ${next ? `<p class="next"><span>Next: ${esc(next.name)}</span>${esc(next.qualify || "")}</p>` : ""}
-      <footer>${p.login ? `<a class="btn small" href="${esc(signedNow ? p.site : p.login)}" target="_blank" rel="noopener">${signedNow ? "Open site" : "Sign in"}</a>` : ""}
+      <footer>
         <select class="tier-select" data-tier="${esc(p.id)}" aria-label="${esc(p.name)} status" hidden>
           <option value="">No status</option>${p.tiers.map((t) => `<option ${tierName === t.name ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></footer>
     </article>`;
@@ -526,14 +535,32 @@ function renderAmex() {
   $("amex").querySelectorAll("[data-bal]").forEach((b) => b.onclick = () => askBalance(b.dataset.bal));
 }
 
+// ---------- Sign-ins (Settings) ----------
+// One line per programme: is this browser signed in there (seen by the add-on in the last hour)?
+async function loadSignins() {
+  const d = await api("/api/points").catch(() => ({ accounts: {} }));
+  const now = Date.now() / 1000;
+  $("signins").innerHTML = PROGRAMS.filter((p) => p.login).map((p) => {
+    const a = (d.accounts || {})[p.acct] || {};
+    const fresh = a.checked && now - a.checked < 3600;
+    const st = a.signedIn === true && fresh ? ["ok", `Signed in · checked ${ago(a.checked)}`]
+      : a.signedIn === false && fresh ? ["no", "Signed out"]
+      : a.checked ? ["", `Not checked recently · last seen ${ago(a.checked)}`] : ["", "Not checked yet"];
+    const reads = p.auto || ["Accor", "Radisson", "Amex"].includes(p.acct);
+    return `<div class="si-row">
+      <span class="p-mono t-${esc(p.tone || "plain")}" aria-hidden="true">${esc(p.mono || "")}</span>
+      <div class="si-main"><b>${esc(p.name)}</b><span class="si-state ${st[0]}">${esc(st[1])}</span>${reads ? "" : `<span class="si-note">Prices not read automatically yet</span>`}</div>
+      <a class="btn small${st[0] === "ok" ? "" : " dark"}" href="${esc(st[0] === "ok" ? p.site || p.login : p.login)}" target="_blank" rel="noopener">${st[0] === "ok" ? "Open" : "Sign in"}</a>
+    </div>`;
+  }).join("") + `<p class="note si-foot">Sign-ins belong to each browser — do this once on the iPad (Orion) and once on the PC (Chrome). Status updates when you open a page of that site.</p>`;
+}
+setInterval(() => { if (!document.hidden && !$("view-settings").hidden) loadSignins(); }, 8000);
+
 // ---------- Settings & updates ----------
-const ADDON_LATEST = "0.6.1";
+const ADDON_LATEST = "0.7.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
-$("gear").onclick = () => { $("settings").hidden = false; checkUpdates(); };
-$("setClose").onclick = () => { $("settings").hidden = true; };
-$("settings").onclick = (e) => { if (e.target === $("settings")) $("settings").hidden = true; };
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("settings").hidden = true; });
+$("gear").onclick = () => show("settings");
 $("addonLink").href = "/static/hotel-search-addon.zip?v=" + ADDON_LATEST;
 $("fromCity").value = store.get("hs-from", "Vienna");
 $("fromCity").onchange = () => { store.set("hs-from", $("fromCity").value.trim() || "Vienna"); if (current) tripInfo(current.params); };
@@ -593,5 +620,5 @@ $("updGo").onclick = async () => {
 loadHistory();
 checkUpdates();
 setTimeout(checkUpdates, 3000);
-show(location.hash === "#memberships" ? "members" : location.hash === "#whatson" ? "whatson" : "search");
+show({ "#memberships": "members", "#whatson": "whatson", "#settings": "settings" }[location.hash] || "search");
 setInterval(() => { if (!document.hidden && !$("view-members").hidden) loadPoints(); }, 15000);

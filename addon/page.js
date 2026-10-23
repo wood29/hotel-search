@@ -22,6 +22,26 @@
   });
   const tell = (msg) => { try { const p = B.runtime.sendMessage(msg); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ } };
 
+  // Amex: only the Membership Rewards points line (and whether you're signed in) ever leaves this page —
+  // nothing else from your bank account is read or sent.
+  if (/americanexpress\.com$/.test(location.hostname)) {
+    let last = "";
+    const started = Date.now();
+    while (Date.now() - started < 600000) {
+      await sleep(Date.now() - started < 20000 ? 3000 : 8000);
+      if (document.hidden) continue;
+      const lines = text().split("\n").map((l) => l.trim()).filter(Boolean);
+      const keep = [];
+      lines.forEach((l, i) => {
+        if (/Membership Rewards|Punkte|\bpoints\b/i.test(l)) keep.push(lines[i - 1] || "", l, lines[i + 1] || "");
+        else if (/^(Abmelden|Log ?out|Sign ?out|Anmelden|Log ?in|Sign ?in)$/i.test(l)) keep.push(l);
+      });
+      const snippet = keep.filter((l) => l.length < 80).slice(0, 30).join("\n");
+      if (snippet && snippet !== last) { last = snippet; tell({ type: "accountPage", chain: CHAIN, text: snippet }); }
+    }
+    return;
+  }
+
   let task = null;
   for (let i = 0; i < 3 && !task; i++) {
     task = await ask({ type: "whoAmI", chain: CHAIN, url: location.href }, 4000);
