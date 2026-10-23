@@ -138,6 +138,7 @@ function buildRows(s) {
     if (h.distanceKm != null) row.dist = h.distanceKm;
     if (h.cashPerNight != null && r.kind !== "points") row.cash = h.cashPerNight;
     if (h.cashTotal != null && r.kind !== "points") row.total = h.cashTotal;
+    if (h.rate && r.kind !== "points") row.rate = h.rate;
     if (h.points != null && r.kind !== "cash") { row.points = h.points; row.unit = h.pointsUnit; }
     if (h.soldOut) row.soldOut = true;
     if (h.pointsLimited && r.kind !== "cash") row.pointsLimited = true;
@@ -148,6 +149,7 @@ function buildRows(s) {
     if (r.total == null && r.cash != null) r.total = r.cash * nights;
     if (r.points != null) r.pointsTotal = r.unit === "stay" ? r.points : r.points * nights;
     r.airport = AIRPORT.test(r.name);
+    r.brand = brandOf(r.name, r.chain);
     const typical = P[r.chain] && P[r.chain].centsPerPoint;
     if (r.total && r.pointsTotal) {
       r.cpp = (r.total * 100) / r.pointsTotal; // euro cents per point
@@ -213,6 +215,14 @@ function render() {
   drawMarkers();
 }
 
+const badge = (r) => `<span class="brand b-${r.chain.toLowerCase()}" title="${esc(r.brand.label)}">${esc(r.brand.code)}</span>`;
+function rateTag(r) {
+  const x = r.rate; if (!x) return "";
+  const extra = x.breakfast ? " · breakfast" : "";
+  if (x.prepaid) return `<div class="rate warn" title="${esc(x.name)}">Prepaid, non-refundable${extra}</div>`;
+  if (x.member) return `<div class="rate ok" title="${esc(x.name)}">Member rate${extra}</div>`;
+  return `<div class="rate" title="${esc(x.name)}: the site's standard rate — the member rate may be lower">Standard rate${extra}</div>`;
+}
 function card(r) {
   const unit = r.unit === "stay" ? "for the stay" : r.unit === "first night" ? "first night" : "per night";
   const v = r.cpp != null ? `<span class="cpp ${r.verdict || ""}" title="What one point is worth here, in euro cents. Typical for ${esc(r.chain)}: ${P[r.chain] ? P[r.chain].centsPerPoint : "?"} ¢">${r.cpp.toFixed(2).replace(".", ",")} ¢/pt</span>` : "";
@@ -220,11 +230,11 @@ function card(r) {
   return `<article class="hotel${r.soldOut ? " sold" : ""}" data-k="${esc(r.key)}">
     <div class="h-main">
       <div class="h-flags">${r.best ? `<span class="flag">${r.best}</span>` : ""}${r.bestPts ? `<span class="flag brass">${r.bestPts}</span>` : ""}</div>
-      <a class="h-name" href="${esc(r.link || r.url || "#")}" target="_blank" rel="noopener" title="${r.link ? "Open this hotel's offer" : "Open the search on the hotel site"}">${esc(r.name)}</a>
+      <div class="h-title">${badge(r)}<a class="h-name" href="${esc(r.link || r.url || "#")}" target="_blank" rel="noopener" title="${r.link ? "Open this hotel's offer" : "Open the search on the hotel site"}">${esc(r.name)}</a></div>
       <div class="h-sub"><span class="chain"><i class="c-${r.chain.toLowerCase()}"></i>${esc(r.chain)}</span>${sub ? `<span>${esc(sub)}</span>` : ""}</div>
     </div>
     <div class="h-cash">${r.soldOut ? `<span class="sold-label">Sold out</span>` : r.cash != null
-      ? `<div class="amt">${eur(r.cash)}<small> / night</small></div><div class="sub">${eur(r.total)} total</div>` : `<div class="none" title="No cash rate read">—</div>`}</div>
+      ? `<div class="amt">${eur(r.cash)}<small> / night</small></div><div class="sub">${eur(r.total)} total</div>${rateTag(r)}` : `<div class="none" title="No cash rate read">—</div>`}</div>
     <div class="h-pts">${r.points != null
       ? `<div class="amt">${fmt(r.points)}<small> pts</small></div><div class="sub">${unit}${r.pointsLimited ? " · not all nights" : ""} ${v}</div>`
       : r.soldOut ? "" : `<div class="none" title="No points rate read">—</div>`}</div>
@@ -284,7 +294,7 @@ function drawMarkers() {
   for (const r of rowsNow) {
     const c = coords[r.name]; if (!c) continue;
     const text = r.soldOut ? "Sold out" : r.cash != null ? eur(r.cash) : r.points != null ? kpts(r.points) : "";
-    const icon = L.divIcon({ className: "", html: `<span class="mk ${r.soldOut ? "sold" : ""} ${r.bestPts ? "brass" : ""}" data-k="${esc(r.key)}">${text}</span>`, iconSize: null });
+    const icon = L.divIcon({ className: "", html: `<span class="mk ${r.soldOut ? "sold" : ""} ${r.bestPts ? "brass" : ""}" data-k="${esc(r.key)}">${badge(r)}${text}</span>`, iconSize: null });
     const m = L.marker(c, { icon, riseOnHover: true }).addTo(mapObj);
     m.bindTooltip(`<b>${esc(r.name)}</b><br>${esc(r.chain)}${r.points != null ? " · " + fmt(r.points) + " pts" : ""}`, { direction: "top", offset: [0, -14] });
     m.on("click", () => { const el = document.querySelector(`.hotel[data-k="${CSS.escape(r.key)}"]`); if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); highlight(r.key, true); } });

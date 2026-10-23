@@ -142,7 +142,14 @@ def hilton(text):
         total = rx(r"@N\s*€ total for").search(seg)
         pts = rx(r"@N\s*\n?\s*Points( for first night|\s*/\s*night)").search(seg)
         d = next((x for x in seg_lines if _is_dist(x)), None)
-        hotels.append({"name": lines[s], "distanceKm": dist_km(d) if d else None,
+        # The rate Hilton quotes, e.g. "Honors Discount Semi-flex" or "Honors Advance Purchase" (prepaid).
+        rate_line = next((x for x in seg_lines if re.match(r"(Honors|Hilton Honors|Advance Purchase|Flexible|Semi-flex|Non-refundable)", x)), None)
+        rate = None
+        if rate_line:
+            nm = re.sub(r"\s*(Breakfast Included|more info)$", "", rate_line).strip()
+            rate = {"name": nm, "member": "Honors" in nm, "breakfast": "Breakfast Included" in rate_line,
+                    "prepaid": bool(re.search(r"Advance Purchase|Non-?refundable|Prepa", nm, re.I))}
+        hotels.append({"name": lines[s], "distanceKm": dist_km(d) if d else None, "rate": rate,
                        "cashPerNight": num(cash[1]) if cash else None,
                        "cashTotal": num(total[1]) if total else None,
                        "points": num(pts[1]) if pts else None,
@@ -160,6 +167,8 @@ def ihg(text):
         return bool(re.search(r"\b\d{4,5}\b", l)) and (bool(re.search(r"\d{3}\s?\d{3}\s?\d{3,4}$", l)) or "," in l)
 
     marks = [i for i, l in enumerate(lines) if "from destination" in l]
+    pref = re.search(r"RATE PREFERENCE\s*\n\s*([^\n]+)", text)
+    pref = pref[1].strip() if pref else None
     hotels = []
     for k, m in enumerate(marks):
         name = next((lines[i] for i in range(m - 1, -1, -1) if lines[i] not in noise and not is_address(lines[i])), None)
@@ -171,6 +180,7 @@ def ihg(text):
                        "cashPerNight": num(cash[1]) if cash else None,
                        "points": num(pts[1]) if pts else None, "pointsUnit": "night",
                        "pointsLimited": "not available for Reward Nights" in seg,
+                       "rate": {"name": pref, "member": bool(re.search(r"member", pref or "", re.I)), "prepaid": False} if pref else None,
                        "soldOut": "No rooms available" in seg})
     found = re.search(r"(\d+) Hotels Found", text)
     return {"hotels": hotels, **account_ihg(text), "expected": int(found[1]) if found else None}

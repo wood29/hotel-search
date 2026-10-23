@@ -121,14 +121,20 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px calc(64px + env(saf
 .map { height: calc(100vh - 120px); min-height: 420px; max-height: 760px; border-radius: var(--r); border: 1px solid var(--line); overflow: hidden; background: var(--sunk); }
 .map-note { font-size: 12px; color: var(--muted); margin: 8px 2px 0; min-height: 16px; }
 
-.hotel { display: grid; grid-template-columns: minmax(0, 1fr) 120px 150px; gap: 16px; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--line); transition: background .12s; }
+.hotel { display: grid; grid-template-columns: minmax(0, 1fr) 132px 150px; gap: 16px; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--line); transition: background .12s; }
 .hotel:last-child { border-bottom: 0; }
 .hotel.hl { background: var(--sunk); }
 .h-main { min-width: 0; }
 .h-flags { display: flex; gap: 6px; margin-bottom: 4px; } .h-flags:empty { display: none; }
 .flag { font-size: 11px; font-weight: 600; letter-spacing: .02em; padding: 2px 8px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); }
 .flag.brass { background: var(--brass-soft); color: var(--brass); }
-.h-name { font-weight: 600; text-decoration: none; letter-spacing: -.005em; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h-title { display: flex; align-items: flex-start; gap: 9px; }
+.h-name { font-weight: 600; text-decoration: none; letter-spacing: -.005em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+.brand { flex: none; display: inline-grid; place-items: center; min-width: 30px; height: 20px; padding: 0 5px; border-radius: 6px; margin-top: 1px;
+  font: 700 10px/1 var(--sans); letter-spacing: .04em; color: #fff; background: var(--faint); }
+.brand.b-marriott { background: var(--c-marriott); } .brand.b-hilton { background: var(--c-hilton); } .brand.b-ihg { background: var(--c-ihg); }
+.rate { font-size: 11px; color: var(--faint); margin-top: 3px; white-space: nowrap; }
+.rate.ok { color: var(--ok); } .rate.warn { color: var(--warn); }
 .h-name:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .h-sub { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--muted); margin-top: 3px; }
 .chain { white-space: nowrap; }
@@ -146,6 +152,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px calc(64px + env(saf
 .list-foot { text-align: center; font-size: 13px; color: var(--muted); margin: 0; padding: 12px; border-top: 1px solid var(--line); }
 
 /* map markers */
+.mk .brand { min-width: 0; height: 16px; padding: 0 4px; font-size: 9px; margin: 0 5px 0 -5px; vertical-align: -3px; border-radius: 999px; }
 .mk { display: inline-block; transform: translate(-50%, -50%); background: var(--surface); color: var(--ink); border: 1px solid var(--line-2); border-radius: 999px;
   padding: 3px 9px; font: 600 12px/1.3 var(--sans); white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.12); font-variant-numeric: tabular-nums; transition: transform .12s; }
 .mk.brass { border-color: var(--brass); color: var(--brass); }
@@ -285,7 +292,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px calc(64px + env(saf
   .tools { width: 100%; }
   .hotel { grid-template-columns: 1fr 1fr; gap: 6px 16px; padding: 14px 16px; }
   .h-main { grid-column: 1 / -1; }
-  .h-name { white-space: normal; }
+  .h-name { -webkit-line-clamp: 3; }
   .h-cash { text-align: left; }
   .hist-row > button { grid-template-columns: 1fr auto; }
   .h-ago { display: none; }
