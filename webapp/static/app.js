@@ -15,6 +15,8 @@ const ago = (ts) => {
   return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
 const day = (iso, o) => new Date(iso + "T12:00").toLocaleDateString("en-GB", o);
+// Country flag (open-source flag-icons set, bundled), shown next to the city name.
+const flag = (cc, cls = "flag-img") => /^[a-z]{2}$/i.test(cc || "") ? `<img class="${cls}" src="/static/vendor/flags/${cc.toLowerCase()}.svg" alt="" onerror="this.remove()">` : "";
 const fmtDates = (p) => `${day(p.checkIn, { day: "numeric", month: "short" })} – ${day(p.checkOut, { day: "numeric", month: "short" })}`;
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
                 set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } } };
@@ -25,11 +27,12 @@ const STATUS = { waiting: "Waiting", loading: "Reading", done: "Done", empty: "N
 
 // ---------- Views ----------
 function show(view) {
-  for (const v of ["search", "members"]) $("view-" + v).hidden = v !== view;
+  for (const v of ["search", "whatson", "members"]) $("view-" + v).hidden = v !== view;
   document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
   if (view === "members") loadPoints();
+  if (view === "whatson") openWhatsOn();
   if (view === "search" && mapObj) setTimeout(() => mapObj.invalidateSize(), 50);
-  history.replaceState(null, "", view === "members" ? "#memberships" : location.pathname);
+  history.replaceState(null, "", view === "members" ? "#memberships" : view === "whatson" ? "#whatson" : location.pathname);
 }
 document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => show(b.dataset.view));
 
@@ -172,7 +175,8 @@ function render() {
   const tooOld = Date.now() - s.created * 1000 > 180000;
   const { rows: all, nights } = buildRows(s);
 
-  $("rTitle").textContent = s.params.city;
+  $("rTitle").innerHTML = flag(s.params.countryCode) + `<span>${esc(s.params.city)}</span>`;
+  $("rTitle").title = s.params.country || "";
   $("rMeta").textContent = `${fmtDates(s.params)} · ${nights} night${nights > 1 ? "s" : ""} · ${s.params.adults} guest${s.params.adults > 1 ? "s" : ""}` + (tooOld ? ` · searched ${ago(s.created)}` : "");
 
   // Which sites were read
@@ -215,7 +219,7 @@ function render() {
   drawMarkers();
 }
 
-const badge = (r) => `<span class="brand b-${r.chain.toLowerCase()}" title="${esc(r.brand.label)}">${esc(r.brand.code)}</span>`;
+const badge = (r) => `<span class="bb b-${r.chain.toLowerCase()}" title="${esc(r.brand.label)}">${esc(r.brand.code)}</span>`;
 function rateTag(r) {
   const x = r.rate; if (!x) return "";
   const extra = x.breakfast ? " · breakfast" : "";
@@ -325,10 +329,21 @@ function highlight(key, sticky) {
 
 // ---------- Weather, holidays, flights ----------
 // ---------- What's on ----------
+// Opening the tab shows events for the search on screen, or the most recent search.
+async function openWhatsOn() {
+  if (current) { if ($("woCity").textContent.trim() !== current.params.city) whatsOn(current.params); return; }
+  const list = await api("/api/searches?limit=1").catch(() => []);
+  if (!list.length) { $("woEmpty").hidden = false; $("whatson").hidden = true; $("woCity").textContent = "Where to?"; $("woSub").textContent = ""; return; }
+  const s = await api("/api/searches/" + list[0].id).catch(() => null);
+  if (s) { current = s; render(); tripInfo(s.params); locate(true); whatsOn(s.params); }
+}
 let woEvents = [], woKind = "All";
 async function whatsOn(p) {
   const sid = current && current.id;
-  $("woTitle").textContent = `What's on in ${p.city}`;
+  $("woEmpty").hidden = true; $("whatson").hidden = false;
+  $("woEyebrow").textContent = "What's on";
+  $("woCity").innerHTML = flag(p.countryCode) + `<span>${esc(p.city)}</span>`;
+  $("woSub").textContent = `${fmtDates(p)} · concerts, shows, sports and exhibitions while you're there`;
   const month = day(p.checkIn, { month: "long", year: "numeric" });
   const g = (q) => "https://www.google.com/search?q=" + encodeURIComponent(q);
   $("woLinks").innerHTML = [
@@ -368,7 +383,8 @@ function eventsChip(n) {
   if (!n) return;
   const a = document.createElement("a");
   a.className = "t-item link events"; a.href = "#whatson"; a.textContent = `${n} event${n > 1 ? "s" : ""} on ↓`;
-  a.onclick = (ev) => { ev.preventDefault(); $("whatson").scrollIntoView({ behavior: "smooth", block: "start" }); };
+  a.textContent = `${n} event${n > 1 ? "s" : ""} on →`;
+  a.onclick = (ev) => { ev.preventDefault(); show("whatson"); window.scrollTo({ top: 0 }); };
   $("trip").appendChild(a);
 }
 
@@ -400,7 +416,7 @@ async function loadHistory() {
   $("history").innerHTML = list.length ? list.map((s) => `
     <div class="hist-row">
       ${histEditing ? `<input type="checkbox" class="hist-pick" data-id="${s.id}" aria-label="Select this search">` : ""}
-      <button type="button" data-id="${s.id}"><span class="h-city">${esc(s.params.city)}<span class="muted">, ${esc(s.params.country)}</span></span>
+      <button type="button" data-id="${s.id}"><span class="h-city">${flag(s.params.countryCode, "flag-sm")}${esc(s.params.city)}<span class="muted">, ${esc(s.params.country)}</span></span>
         <span class="h-when">${fmtDates(s.params)} · ${s.params.adults} guest${s.params.adults > 1 ? "s" : ""}</span><span class="muted h-ago">${ago(s.created)}</span></button>
     </div>`).join("") : '<div class="empty small">Your searches will appear here.</div>';
   $("history").querySelectorAll("button[data-id]").forEach((b) => b.onclick = () => {
@@ -577,5 +593,5 @@ $("updGo").onclick = async () => {
 loadHistory();
 checkUpdates();
 setTimeout(checkUpdates, 3000);
-show(location.hash === "#memberships" ? "members" : "search");
+show(location.hash === "#memberships" ? "members" : location.hash === "#whatson" ? "whatson" : "search");
 setInterval(() => { if (!document.hidden && !$("view-members").hidden) loadPoints(); }, 15000);

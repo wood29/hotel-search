@@ -31,6 +31,7 @@
     </a>
     <nav class="tabs" role="tablist">
       <button type="button" role="tab" data-view="search" aria-selected="true">Search</button>
+      <button type="button" role="tab" data-view="whatson" aria-selected="false">What's on</button>
       <button type="button" role="tab" data-view="members" aria-selected="false">Memberships</button>
     </nav>
     <div class="bar-end">
@@ -96,11 +97,7 @@
         <div class="map-wrap"><div id="map" class="map" aria-label="Map of the hotels"></div><p id="mapNote" class="map-note"></p></div>
       </div>
 
-      <section id="whatson" class="whatson">
-        <div class="sec-head"><h2 id="woTitle">What's on</h2><div id="woLinks" class="wo-links"></div></div>
-        <div id="woFilter" class="seg small" role="group" aria-label="Kind of event" hidden></div>
-        <div id="woList" class="wo-list"></div>
-      </section>
+
     </section>
 
     <section class="recent">
@@ -110,6 +107,20 @@
         <button id="histDel" type="button" class="danger" disabled>Delete selected</button>
       </div>
       <div id="history" class="history"></div>
+    </section>
+  </section>
+
+  <!-- ============ WHAT'S ON ============ -->
+  <section id="view-whatson" class="view" hidden>
+    <div class="m-hero">
+      <p id="woEyebrow" class="eyebrow">What's on</p>
+      <h1 id="woCity" class="display big">—</h1>
+      <p id="woSub" class="lede"></p>
+    </div>
+    <div id="woEmpty" class="empty" hidden>Search a city first — events for your dates appear here.</div>
+    <section id="whatson" class="whatson">
+      <div class="wo-bar"><div id="woFilter" class="seg small" role="group" aria-label="Kind of event" hidden></div><div id="woLinks" class="wo-links"></div></div>
+      <div id="woList" class="wo-list"></div>
     </section>
   </section>
 
