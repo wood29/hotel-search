@@ -25,6 +25,7 @@
   let task = null;
   for (let i = 0; i < 3 && !task; i++) {
     task = await ask({ type: "whoAmI", chain: CHAIN, url: location.href }, 4000);
+    if (task && task.retry) { location.replace(task.retry); return; }
     if (!task && i < 2) await sleep(1500);
   }
   tell({ type: "log", where: "page", chain: CHAIN, url: location.href.slice(0, 160), task: task ? task.key : "none", visible: !document.hidden });

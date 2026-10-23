@@ -12,7 +12,7 @@ const ago = (ts) => {
   const m = Math.round((Date.now() / 1000 - ts) / 60);
   return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
-const STATUS = { waiting: "waiting…", loading: "reading…", done: "done", empty: "no results found", timeout: "took too long", blocked: "site refused", manual: "open to check" };
+const STATUS = { waiting: "waiting…", loading: "reading…", done: "done", empty: "no results found", none: "site shows no hotels", timeout: "took too long", blocked: "site refused", manual: "open to check" };
 const CHAINS = {
   Marriott: { program: "Bonvoy", login: "https://www.marriott.com/en-gb/sign-in.mi" },
   Hilton: { program: "Honors", login: "https://www.hilton.com/en/hilton-honors/login/" },
@@ -286,7 +286,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) load
 $("gear").onclick = () => { $("settings").hidden = !$("settings").hidden; };
 api("/api/health").then((h) => { $("version").textContent = h.version || "0.3"; }).catch(() => {});
 // The newest add-on that this web app version ships (the add-on rarely changes now).
-const ADDON_LATEST = "0.6.0";
+const ADDON_LATEST = "0.6.1";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 

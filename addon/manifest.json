@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hotel Search reader (private)",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Reads your member prices from hotel search pages your browser opens, and sends them to your Hotel Search web app.",
   "action": {
     "default_title": "Open Hotel Search"

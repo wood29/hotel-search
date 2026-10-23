@@ -211,11 +211,14 @@ def attach_links(hotels, links):
 def read_page(chain, text, links=None):
     """Everything the NAS needs from one results page."""
     if blocked(text):
-        return {"blocked": True, "hotels": [], "expected": None, "signedIn": None, "balance": None, "tier": None}
+        return {"blocked": True, "noneFound": False, "hotels": [], "expected": None, "signedIn": None, "balance": None, "tier": None}
     fn = LISTS.get(chain)
     if not fn:
-        return {"blocked": False, "hotels": [], "expected": None, "signedIn": None, "balance": None, "tier": None}
+        return {"blocked": False, "noneFound": False, "hotels": [], "expected": None, "signedIn": None, "balance": None, "tier": None}
     r = fn(text)
     attach_links(r["hotels"], links)
     r["blocked"] = False
+    # The site itself says there's nothing for these dates (e.g. no reward nights) — not a reading problem.
+    r["noneFound"] = not r["hotels"] and bool(re.search(
+        r"\b0 Hotels? Found\b|No hotels found|No hotels available|no results|We couldn.t find any hotels", text, re.I))
     return r

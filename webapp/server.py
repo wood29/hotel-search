@@ -294,15 +294,22 @@ class Handler(BaseHTTPRequestHandler):
                     item = dict(json.loads(r["payload"] or "{}"), key=r["key"], chain=r["chain"], kind=r["kind"],
                                 status=r["status"], updated=r["updated"])
                     pg = pages.get(r["key"])
-                    if pg and r["status"] in ("done", "empty"):
+                    if pg and r["status"] in ("done", "empty", "none"):
                         # Read the saved page again, so reader fixes also improve earlier searches.
                         rd = readers.read_page(pg["chain"], pg["text"] or "", json.loads(pg["links"] or "[]"))
                         item["hotels"] = rd["hotels"]
-                        item["status"] = "done" if rd["hotels"] else "empty"
+                        item["status"] = "done" if rd["hotels"] else "none" if rd.get("noneFound") else "empty"
                     out.append(item)
                 return self._send(200, {"id": row["id"], "created": row["created"], "params": json.loads(row["params"]), "results": out})
             if p == "/api/debug":
                 return self._send(200, DEBUG[-int(q.get("n", 120)):])
+            if p == "/api/page":
+                # A saved hotel page as the add-on saw it (for fixing the readers when a site changes).
+                with db() as con:
+                    pg = con.execute("SELECT * FROM pages WHERE search_id=? AND key=?", (int(q["search"]), q["key"])).fetchone()
+                if not pg:
+                    return self._send(404, {"error": "not found"})
+                return self._send(200, {"chain": pg["chain"], "text": pg["text"], "links": json.loads(pg["links"] or "[]")[:40]})
             if p == "/api/admin/update-status":
                 info = {"current": VERSION, "repo": REPO, "hasKey": os.path.exists(TOKEN_PATH), "latest": None, "error": None}
                 if info["hasKey"]:
@@ -356,6 +363,10 @@ class Handler(BaseHTTPRequestHandler):
                 sid = int(m[1])
                 payload = {k: body.get(k) for k in ("hotels", "balance", "signedIn", "tier", "note", "url")}
                 with LOCK, db() as con:
+                    # A page that already finished is never turned back into "loading" or "took too long".
+                    prev = con.execute("SELECT status FROM results WHERE search_id=? AND key=?", (sid, body["key"])).fetchone()
+                    if prev and prev["status"] in ("done", "empty", "none", "blocked") and body.get("status") in ("loading", "timeout"):
+                        return self._send(200, {"ok": True, "kept": prev["status"]})
                     con.execute("""INSERT INTO results (search_id, key, chain, kind, status, payload, updated)
                                    VALUES (?,?,?,?,?,?,?)
                                    ON CONFLICT(search_id, key) DO UPDATE SET status=excluded.status,
@@ -384,7 +395,8 @@ class Handler(BaseHTTPRequestHandler):
                 reply = {"hotels": len(rd["hotels"]), "expected": rd["expected"], "blocked": rd["blocked"]}
                 if body.get("final") and body.get("searchId") and body.get("key"):
                     sid, key = int(body["searchId"]), str(body["key"])[:40]
-                    status = "blocked" if rd["blocked"] else "done" if rd["hotels"] else "empty"
+                    status = ("blocked" if rd["blocked"] else "done" if rd["hotels"]
+                              else "none" if rd.get("noneFound") else "empty")
                     payload = {"hotels": rd["hotels"], "balance": rd.get("balance"), "signedIn": rd.get("signedIn"),
                                "tier": rd.get("tier"), "note": None if rd["hotels"] else text[:2500], "url": body.get("url")}
                     with LOCK, db() as con:

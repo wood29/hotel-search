@@ -24,8 +24,11 @@ if (has("action.onClicked")) B.action.onClicked.addListener(async () => {
   B.tabs.create({ url: ((await store.get("apiBase")) || DEFAULT_APP) + "/" });
 });
 
-const getState = () => store.get("search");
-const setState = (s) => store.set("search", s);
+// One shared copy of the running search, so two hotel pages finishing at the same moment
+// can't overwrite each other's progress.
+let current = null;
+const getState = async () => current || (current = (await store.get("search")) || null);
+const setState = (s) => { current = s; return store.set("search", s); };
 
 B.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
@@ -138,6 +141,19 @@ async function claimTaskNow(tabId, msg) {
     const marker = (x) => !x.marker || (x.marker.startsWith("!") ? !href.includes(x.marker.slice(1)) : href.includes(x.marker));
     const onSearchPage = free.some((x) => x.searchPath && href.includes(x.searchPath));
     t = free.find((x) => x.url === href) || (onSearchPage ? free.find(marker) || free[0] : null);
+    // The site sent our tab to its home page instead of the results (Marriott does this when its
+    // session is new). Load the search address once more in that same tab.
+    const path = (() => { try { return new URL(href).pathname; } catch (e) { return ""; } })();
+    const isHome = /^\/([a-z]{2}(-[a-z]{2})?\/)?(default\.mi|index\.html)?$/i.test(path) || /expiredSession/i.test(path);
+    if (!t && isHome && free.length && Date.now() - s.startedAt < 45000) {
+      const again = free.find((x) => !x.retried);
+      if (again) {
+        again.retried = true;
+        await setState(s);
+        log({ where: "whoAmI", senderTab: tabId == null ? "none" : tabId, url: String(href).slice(0, 160), retry: again.key });
+        return { retry: again.url };
+      }
+    }
   }
   log({ where: "whoAmI", senderTab: tabId == null ? "none" : tabId, chain: msg.chain, url: String(msg.url || "").slice(0, 160), got: t ? t.key : "none" });
   if (!t) return null;
