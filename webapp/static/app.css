@@ -59,7 +59,7 @@ i[class^="c-"] { display: inline-block; width: 7px; height: 7px; border-radius: 
 main { max-width: 1240px; margin: 0 auto; padding: 28px 24px calc(64px + env(safe-area-inset-bottom)); }
 
 /* ---------- Search bar ---------- */
-.searchbar { display: grid; grid-template-columns: minmax(200px, 2.2fr) 1fr 1fr .8fr auto; align-items: stretch; background: var(--surface);
+.searchbar { display: grid; grid-template-columns: minmax(150px, 2.2fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(76px, .6fr) auto; align-items: stretch; background: var(--surface);
   border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); padding: 6px; gap: 0; }
 .f { display: flex; flex-direction: column; justify-content: center; padding: 6px 20px; border-radius: 999px; position: relative; min-width: 0; cursor: text; }
 .f + .f::before { content: ""; position: absolute; left: 0; top: 22%; bottom: 22%; width: 1px; background: var(--line); }
@@ -245,6 +245,8 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px calc(64px + env(saf
   .map { height: 68vh; max-height: none; }
   #viewSwitch { display: inline-flex; }
   .bar-in { padding: 10px 16px; gap: 10px; }
+  .f { padding: 6px 14px; }
+  .go span { display: none; } .go { padding: 0 18px; }
   main { padding: 20px 16px 56px; }
   .amex { grid-template-columns: 1fr; gap: 16px; }
 }
@@ -257,6 +259,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px calc(64px + env(saf
   .f.where { grid-column: 1 / -1; }
   .f.guests { grid-column: 1 / 2; }
   .go { grid-column: 2 / 3; justify-content: center; border-radius: 14px; min-height: 48px; }
+  .go span { display: inline; }
   .intro { padding-top: 44px; }
   .r-head { margin-top: 22px; }
   .toolbar { gap: 10px; }

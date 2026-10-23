@@ -396,12 +396,12 @@ async function loadPoints() {
       <header><div><h3>${esc(p.name)}</h3>${state}</div>
         <button class="tier-badge ${tier ? "t" + Math.min(ti, 5) : "none"}" data-tier-edit="${esc(p.id)}" type="button" title="Change status">${tier ? esc(tier.name) : "Set status"}</button></header>
       <div class="bal-row">
-        <button class="bal" type="button" data-bal="${esc(p.id)}" title="${p.auto ? "Fills in when you search signed in — tap to correct" : "Tap to update"}">${l ? fmt(l.balance) : "—"}<small>${l ? " pts" : ""}</small></button>
+        <button class="bal" type="button" data-bal="${esc(p.id)}" title="${p.auto ? "Fills in when you search signed in — tap to correct" : "Tap to update"}">${l ? fmt(l.balance) : "—"}<small>${l ? " " + (p.unit || "pts") : ""}</small></button>
         <span class="bal-val">${value}</span>
       </div>
       <p class="meta">${esc(delta)}</p>
       ${tier && tier.benefits.length ? `<ul class="perks">${tier.benefits.slice(0, 4).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : p.auto && !tier ? `<p class="meta">Set your status to see what it gets you.</p>` : ""}
-      ${next ? `<p class="next"><span>Next: ${esc(next.name)}</span> ${esc(next.qualify || "")}</p>` : ""}
+      ${next ? `<p class="next"><span>Next: ${esc(next.name)}</span>${esc(next.qualify || "")}</p>` : ""}
       <footer>${p.login ? `<a class="btn small" href="${esc(signedNow ? p.site : p.login)}" target="_blank" rel="noopener">${signedNow ? "Open site" : "Sign in"}</a>` : ""}
         <select class="tier-select" data-tier="${esc(p.id)}" aria-label="${esc(p.name)} status" hidden>
           <option value="">No status</option>${p.tiers.map((t) => `<option ${tierName === t.name ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></footer>
@@ -436,10 +436,10 @@ function renderAmex() {
       <button class="bal big" type="button" data-bal="${esc(amex.id)}">${bal != null ? fmt(bal) : "Add balance"}<small>${bal != null ? " pts" : ""}</small></button>
       <p class="meta">${l ? "updated " + ago(l.ts) : "Enter it from your Amex app — it isn't read automatically."}</p></div>
       <p class="note">${esc(amex.note || "")}</p></div>
-    <div class="xfers">${amex.transfers.map((t) => {
+    <div class="xfers"><p class="eyebrow">Transfer to hotel points</p>${amex.transfers.map((t) => {
       const to = P[t.to], got = bal != null ? Math.floor((bal / t.from) * t.get) : null;
       const val = got != null && to && to.centsPerPoint ? (got * to.centsPerPoint) / 100 : null;
-      return `<div class="xfer"><span class="x-to"><i class="c-${esc(t.to.toLowerCase())}"></i>${esc(to ? to.name : t.to)}</span>
+      return `<div class="xfer"><span class="x-to"><i class="c-${esc(t.to.toLowerCase().replace(/[^a-z]/g, ""))}"></i>${esc(to ? to.name : t.to)}</span>
         <span class="x-rate">${fmt(t.from)} → ${fmt(t.get)}</span>
         <span class="x-got">${got != null ? fmt(got) + " pts" : ""}</span><span class="x-val">${val != null ? "≈ " + eur(val) : ""}</span></div>`;
     }).join("")}</div>`;
