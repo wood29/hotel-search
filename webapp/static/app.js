@@ -248,11 +248,17 @@ function ensureMap() {
   if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", setTiles);
   return mapObj;
 }
+// Esri's quiet grey basemap: no key needed (CARTO's now asks for one). Street names come as a second layer.
+let labelLayer = null;
 function setTiles() {
   if (!mapObj) return;
   if (tileLayer) tileLayer.remove();
-  tileLayer = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark() ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`, {
-    maxZoom: 19, subdomains: "abcd", attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a>' }).addTo(mapObj);
+  if (labelLayer) labelLayer.remove();
+  const tone = dark() ? "Dark_Gray" : "Light_Gray";
+  const base = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_" + tone;
+  tileLayer = L.tileLayer(base + "_Base/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16,
+    attribution: 'Tiles © <a href="https://www.esri.com">Esri</a> — Esri, HERE, Garmin, © OpenStreetMap contributors' }).addTo(mapObj);
+  labelLayer = L.tileLayer(base + "_Reference/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16 }).addTo(mapObj);
 }
 async function locate(again, first = true) {
   clearTimeout(locateTimer);
@@ -293,7 +299,7 @@ function fitMap() {
   if (!mapObj || !current) return;
   const pts = Object.entries(markers).filter(([k]) => k !== "__centre").map(([, m]) => m.getLatLng());
   const near = pts.filter((p) => mapObj.distance(p, [current.params.lat, current.params.lon]) < 15000);
-  if (near.length) mapObj.fitBounds(L.latLngBounds(near.concat([[current.params.lat, current.params.lon]])).pad(0.15), { maxZoom: 15 });
+  if (near.length) mapObj.fitBounds(L.latLngBounds(near.concat([[current.params.lat, current.params.lon]])).pad(0.15), { maxZoom: 16 });
   else mapObj.setView([current.params.lat, current.params.lon], 13);
 }
 function highlight(key, sticky) {
