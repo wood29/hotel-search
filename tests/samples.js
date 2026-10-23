@@ -338,3 +338,57 @@ From
 avg/night
 View Rates
 3,006€ total for 2 nights`;
+module.exports.ihgIpadCash = `MICHAEL
+8 Hotels Found
+DESTINATION
+RATE PREFERENCE
+Best Available
+8 Hotels Found
+Includes taxes and fees
+CERTIFIED
+InterContinental Rome Ambasciatori Palace
+0800 291 353
+0.62 km (0.39mi) from destination
+    rating 4.5
+From
+832 EUR
+per night
+Includes taxes and fees
+Select Hotel
+CERTIFIED
+Six Senses Rome
+0800 291 353
+1.26 km (0.78mi) from destination
+From
+1,504 EUR
+per night
+Book on Hotel Site
+Vignette Collection Hotel Alexandra Rome
+0800 291 353
+0.67 km (0.42mi) from destination
+No rooms available for selected dates
+Browse Dates
+Back to Top`;
+module.exports.hiltonIpadPoints = `Hi, M
+Use Points
+You have 12,667 Points available.You have 12,667 available.
+Showing 1 - 20 of 23 hotels
+Palazzo Manfredi, an SLH Hotel
+, Opens new tab
+View hotel details for Palazzo Manfredi, an SLH HotelView hotel details
+0.07 miles
+From
+
+1,189,000
+
+Points/night
+View Rates
+DoubleTree by Hilton Rome Monti
+, Opens new tab
+View hotel details for DoubleTree by Hilton Rome MontiView hotel details
+0.59 miles
+
+178,000
+
+Points for first night
+View Rates`;

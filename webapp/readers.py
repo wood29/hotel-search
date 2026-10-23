@@ -163,13 +163,14 @@ def ihg(text):
     for k, m in enumerate(marks):
         name = next((lines[i] for i in range(m - 1, -1, -1) if lines[i] not in noise and not is_address(lines[i])), None)
         seg = "\n".join(lines[m: marks[k + 1] if k + 1 < len(marks) else len(lines)])
-        cash = (rx(r"@N\s*(?:EUR|€)\s*\n?\s*/\s*night").search(seg)
+        cash = (rx(r"@N\s*(?:EUR|€)\s*\n?\s*(?:/|per)\s*night").search(seg)
                 or rx(r"€\s*@N\s*\n?\s*/?\s*(?:per\s+)?night").search(seg))
         pts = rx(r"@N\s*PTS").search(seg)
         hotels.append({"name": name, "distanceKm": dist_km(lines[m]),
                        "cashPerNight": num(cash[1]) if cash else None,
                        "points": num(pts[1]) if pts else None, "pointsUnit": "night",
-                       "pointsLimited": "not available for Reward Nights" in seg})
+                       "pointsLimited": "not available for Reward Nights" in seg,
+                       "soldOut": "No rooms available" in seg})
     found = re.search(r"(\d+) Hotels Found", text)
     return {"hotels": hotels, **account_ihg(text), "expected": int(found[1]) if found else None}
 

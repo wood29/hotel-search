@@ -302,6 +302,7 @@ async function checkUpdates() {
   if (addonVersion && newer(ADDON_LATEST, addonVersion))
     $("addonAdvice").innerHTML = `<b>Your add-on (${addonVersion}) is older than ${ADDON_LATEST} — please reinstall it.</b>`;
 }
+$("addonLink").href = "/static/hotel-search-addon.zip?v=" + ADDON_LATEST; // always a fresh copy, never a cached old one
 checkUpdates();
 setTimeout(checkUpdates, 3000); // again once the add-on has said hello
 $("ghGo").onclick = async () => {

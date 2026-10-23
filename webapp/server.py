@@ -294,7 +294,7 @@ class Handler(BaseHTTPRequestHandler):
                     item = dict(json.loads(r["payload"] or "{}"), key=r["key"], chain=r["chain"], kind=r["kind"],
                                 status=r["status"], updated=r["updated"])
                     pg = pages.get(r["key"])
-                    if pg and r["status"] in ("done", "empty", "none"):
+                    if pg and r["status"] in ("done", "empty", "none", "timeout"):
                         # Read the saved page again, so reader fixes also improve earlier searches.
                         rd = readers.read_page(pg["chain"], pg["text"] or "", json.loads(pg["links"] or "[]"))
                         item["hotels"] = rd["hotels"]
