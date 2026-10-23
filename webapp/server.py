@@ -234,34 +234,68 @@ def geo_key(name, city):
     return (re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip() + "|" + (city or "").lower().strip())
 
 
+NOMINATIM_LOCK = threading.Lock()
+
+
+def _get_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "hotel-search-private/1.0 (personal use)"})
+    with urllib.request.urlopen(req, timeout=12) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _near(lat, lon, clat, clon, km=40):
+    if clat is None:
+        return True
+    from math import radians, cos, sqrt
+    dx = radians(lon - clon) * cos(radians(clat)) * 6371
+    dy = radians(lat - clat) * 6371
+    return sqrt(dx * dx + dy * dy) <= km
+
+
+def geocode(name, city, country, clat, clon):
+    """Photon (fast, several at once) first, OpenStreetMap's Nominatim (one a second) as a fallback.
+    Only accepts a place near the searched city, so a same-named hotel elsewhere can't sneak in."""
+    failed = False
+    try:
+        q = urllib.parse.urlencode({"q": f"{name} {city}", "limit": 3, **({"lat": clat, "lon": clon} if clat is not None else {})})
+        for f in _get_json("https://photon.komoot.io/api/?" + q).get("features", []):
+            lon, lat = f["geometry"]["coordinates"]
+            if _near(lat, lon, clat, clon):
+                return lat, lon, False
+    except Exception:
+        failed = True
+    with NOMINATIM_LOCK:
+        for q in (f"{name}, {city}, {country}", f"{name}, {country}"):
+            try:
+                res = _get_json("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=3&q=" + urllib.parse.quote(q))
+                for r in res:
+                    lat, lon = float(r["lat"]), float(r["lon"])
+                    if _near(lat, lon, clat, clon):
+                        time.sleep(1.1)
+                        return lat, lon, False
+            except Exception:
+                failed = True
+            time.sleep(1.1)
+    return None, None, failed
+
+
 def geo_worker():
     while True:
         GEO_WAKE.wait(30)
         GEO_WAKE.clear()
         while GEO_QUEUE:
-            key, name, city, country = GEO_QUEUE.pop(0)
-            lat = lon = None
-            failed = False
-            for q in (f"{name}, {city}, {country}", f"{name}, {country}"):
-                try:
-                    url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + urllib.parse.quote(q)
-                    req = urllib.request.Request(url, headers={"User-Agent": "hotel-search-private/1.0 (personal use)"})
-                    with urllib.request.urlopen(req, timeout=12) as r:
-                        res = json.loads(r.read().decode("utf-8"))
-                    if res:
-                        lat, lon = float(res[0]["lat"]), float(res[0]["lon"])
-                except Exception:
-                    failed = True  # network trouble: try again next time instead of remembering "not found"
-                time.sleep(1.1)
-                if lat is not None:
-                    break
-            if lat is not None or not failed:
+            try:
+                key, name, city, country, clat, clon = GEO_QUEUE.pop(0)
+            except IndexError:
+                break
+            lat, lon, failed = geocode(name, city, country, clat, clon)
+            if lat is not None or not failed:  # network trouble: try again next time instead of remembering "not found"
                 with LOCK, db() as con:
                     con.execute("INSERT OR REPLACE INTO geo (key, lat, lon, ts) VALUES (?,?,?,?)", (key, lat, lon, time.time()))
             GEO_PENDING.discard(key)
 
 
-def hotel_locations(names, city, country):
+def hotel_locations(names, city, country, clat=None, clon=None):
     out = {}
     with db() as con:
         for n in names:
@@ -272,7 +306,7 @@ def hotel_locations(names, city, country):
                     out[n] = [row["lat"], row["lon"]]
             elif k not in GEO_PENDING:
                 GEO_PENDING.add(k)
-                GEO_QUEUE.append((k, n, city, country))
+                GEO_QUEUE.append((k, n, city, country, clat, clon))
     if GEO_QUEUE:
         GEO_WAKE.set()
     return {"locations": out, "pending": len(GEO_PENDING)}
@@ -492,7 +526,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(404, {"error": "not found"})
                 prm = json.loads(row["params"])
                 names = [str(n)[:160] for n in (body.get("names") or []) if n][:150]
-                return self._send(200, hotel_locations(names, prm.get("city", ""), prm.get("country", "")))
+                return self._send(200, hotel_locations(names, prm.get("city", ""), prm.get("country", ""), prm.get("lat"), prm.get("lon")))
             if p == "/api/searches/delete":
                 ids = [int(i) for i in (body.get("ids") or [])][:500]
                 with LOCK, db() as con:
@@ -542,6 +576,11 @@ class Handler(BaseHTTPRequestHandler):
                                        ON CONFLICT(search_id, key) DO UPDATE SET text=excluded.text, links=excluded.links,
                                        updated=excluded.updated""", (sid, key, chain, text, json.dumps(links)[:300000], time.time()))
                         record_account(con, chain, rd.get("signedIn"), rd.get("balance"), rd.get("tier"))
+                        srow = con.execute("SELECT params FROM searches WHERE id=?", (sid,)).fetchone()
+                    if srow and rd["hotels"]:
+                        prm = json.loads(srow["params"])
+                        hotel_locations([h["name"] for h in rd["hotels"] if h.get("name")], prm.get("city", ""),
+                                        prm.get("country", ""), prm.get("lat"), prm.get("lon"))
                     reply["status"] = status
                 return self._send(200, reply)
             if p == "/api/account-page":
@@ -598,6 +637,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     init_db()
-    threading.Thread(target=geo_worker, daemon=True).start()
+    for _ in range(4):  # look up several hotels at once
+        threading.Thread(target=geo_worker, daemon=True).start()
     print(f"Hotel Search running on port {PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
