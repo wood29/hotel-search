@@ -276,7 +276,62 @@ def account_amex(text):
     return {"signedIn": signed_in, "balance": v if v and v >= 1 else None, "tier": None}
 
 
-ACCOUNT.update({"Amex": account_amex, "Accor": account_generic, "Radisson": account_generic, "Meliá": account_generic, "GHA": account_generic})
+def _top(text, n=8):
+    return [l.strip() for l in text.split("\n") if l.strip()][:n]
+
+
+SIGN_IN_WORDS = r"^(Anmelden|Einloggen|Registrieren|Sign in|Log in|Login|Join|Join now|Sign in / Join|Inscríbete|Iniciar sesión)$"
+
+
+def account_accor(text):
+    # Signed in: your name sits right under the menu button ("MENÜ" / "MENU"), e.g. "michael holzer".
+    top = _top(text)
+    if any(re.match(SIGN_IN_WORDS, l, re.I) for l in top):
+        return {"signedIn": False, "balance": None, "tier": None}
+    for i, l in enumerate(top[:-1]):
+        if re.fullmatch(r"MEN[UÜ]", l, re.I):
+            nxt = top[i + 1]
+            if re.fullmatch(r"[^\d@]{3,40}", nxt) and not re.search(r"willkommen|welcome|wohin|where", nxt, re.I):
+                return {"signedIn": True, "balance": None, "tier": None}
+    return {"signedIn": None, "balance": None, "tier": None}
+
+
+def account_radisson(text):
+    # The page header shows "SIGN IN" next to "MY RESERVATIONS" when you're signed out.
+    head = text[:4000]
+    if re.search(r"\b(SIGN IN|Sign in|Log in|JOIN NOW|Join now)\b", head):
+        return {"signedIn": False, "balance": None, "tier": None}
+    if re.search(r"MY RESERVATIONS|My account|Hi,? [A-Z]", head):
+        return {"signedIn": True, "balance": None, "tier": None}
+    return {"signedIn": None, "balance": None, "tier": None}
+
+
+def account_melia(text):
+    # Signed in: "Your level is gold" and "You have 1,234 points" / "You don't have any points yet".
+    level = re.search(r"Your level is (\w+)|Tu nivel es (\w+)|Ihr Level ist (\w+)", text, re.I)
+    if level:
+        bal = rx(r"You have @N points|Tienes @N puntos|Sie haben @N Punkte", re.I).search(text)
+        none = re.search(r"don't have any points|no tienes puntos|keine Punkte", text, re.I)
+        tier = next(g for g in level.groups() if g).capitalize()
+        return {"signedIn": True, "balance": num(bal[1]) if bal else 0 if none else None, "tier": tier}
+    if any(re.match(SIGN_IN_WORDS, l, re.I) for l in _top(text, 12)):
+        return {"signedIn": False, "balance": None, "tier": None}
+    return {"signedIn": None, "balance": None, "tier": None}
+
+
+def account_gha(text):
+    # Signed in: "Good Morning, Michael", "D$0 YOUR CURRENT BALANCE", "Gold Member - Member number …".
+    greet = re.search(r"Good (Morning|Afternoon|Evening|Day), \w", text)
+    bal = rx(r"D\$\s?@N\s*\n?\s*YOUR CURRENT BALANCE", re.I).search(text)
+    tier = re.search(r"\b(Silver|Gold|Platinum|Titanium|Black)\s+Member\b", text)
+    if greet or bal or tier:
+        return {"signedIn": True, "balance": num(bal[1]) if bal else None, "tier": tier[1] if tier else None}
+    if any(re.match(SIGN_IN_WORDS, l, re.I) for l in _top(text, 12)):
+        return {"signedIn": False, "balance": None, "tier": None}
+    return {"signedIn": None, "balance": None, "tier": None}
+
+
+ACCOUNT.update({"Amex": account_amex, "Accor": account_accor, "Radisson": account_radisson, "Meliá": account_melia, "GHA": account_gha})
 
 
 def blocked(text):

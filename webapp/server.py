@@ -101,19 +101,24 @@ def record_points(con, program, balance, source):
                     (program, int(balance), source, time.time()))
 
 
+# Sign-in checks are per site; points and status are kept under the programme's name.
+PROGRAM_OF = {"Accor": "ALL Accor", "Radisson": "Radisson Rewards", "Meliá": "MeliáRewards", "GHA": "GHA DISCOVERY"}
+
+
 def record_account(con, chain, signed_in, balance, tier):
+    program = PROGRAM_OF.get(chain, chain)
     if signed_in is not None:
         con.execute("INSERT INTO accounts (chain, signed_in, checked) VALUES (?,?,?) "
                     "ON CONFLICT(chain) DO UPDATE SET signed_in=excluded.signed_in, checked=excluded.checked",
                     (chain, 1 if signed_in else 0, time.time()))
     if signed_in and isinstance(balance, (int, float)):
-        record_points(con, chain, balance, "auto")
+        record_points(con, program, balance, "auto")
     if signed_in and tier:
-        row = con.execute("SELECT source FROM status WHERE program=?", (chain,)).fetchone()
+        row = con.execute("SELECT source FROM status WHERE program=?", (program,)).fetchone()
         if not row or row["source"] != "manual":
             con.execute("INSERT INTO status (program, tier, source, updated) VALUES (?,?,?,?) "
                         "ON CONFLICT(program) DO UPDATE SET tier=excluded.tier, source=excluded.source, updated=excluded.updated",
-                        (chain, str(tier)[:40], "auto", time.time()))
+                        (program, str(tier)[:40], "auto", time.time()))
 
 
 def install_update(data):
