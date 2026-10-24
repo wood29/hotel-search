@@ -23,6 +23,11 @@
   window.addEventListener("message", async (e) => {
     if (e.source !== window || !e.data || e.data.source !== "hs-page") return;
     if (e.data.type === "ping") hello();
+    if (e.data.type === "open") {
+      // Sign-in pages opened by the add-on load in this browser, not in the hotel's own app.
+      const r = await send({ type: "openTab", url: e.data.url });
+      post({ type: "opened", ok: !!(r && r.ok), url: e.data.url });
+    }
     if (e.data.type === "start") {
       const r = await send({ type: "start", searchId: e.data.searchId, params: e.data.params, jobs: e.data.jobs, apiBase: location.origin }, 30000);
       post({ type: "started", ok: !!(r && r.ok), details: r || null });

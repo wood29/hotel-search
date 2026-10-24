@@ -35,6 +35,7 @@ B.runtime.onMessage.addListener((msg, sender, reply) => {
     try {
       if (msg.type === "ping") reply({ ok: true, version: VERSION, windows: has("windows.create"), alarms: has("alarms.create") });
       else if (msg.type === "start") reply(await start(msg, sender.tab));
+      else if (msg.type === "openTab") reply(await openTab(msg.url));
       else if (msg.type === "hello") { await store.set("apiBase", msg.apiBase); reply(true); }
       else if (msg.type === "whoAmI") reply(await claimTask(sender.tab && sender.tab.id, msg));
       else if (msg.type === "tick") { await rotate(); reply(true); }
@@ -62,6 +63,14 @@ async function post(path, body, apiBase) {
 
 // Waits for a browser call, but never longer than a few seconds (some browsers never answer).
 const within = (p, ms = 4000) => Promise.race([Promise.resolve(p).catch(() => null), new Promise((r) => setTimeout(() => r(null), ms))]);
+
+// Only the hotel and Amex sites this add-on works with can be opened this way.
+const OPENABLE = /^https:\/\/([a-z0-9-]+\.)*(marriott\.com|hilton\.com|ihg\.com|accor\.com|radissonhotels\.com|melia\.com|ghadiscovery\.com|nh-hotels\.com|americanexpress\.com)(\/|$)/i;
+async function openTab(url) {
+  if (!OPENABLE.test(String(url || ""))) return { ok: false, error: "not a hotel site" };
+  const t = await within(B.tabs.create({ url, active: true }), 4000);
+  return { ok: true, tab: t ? t.id : null };
+}
 
 async function start({ searchId, params, jobs: given, apiBase }, appTab) {
   const old = await getState();

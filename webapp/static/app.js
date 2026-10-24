@@ -49,6 +49,7 @@ window.addEventListener("message", (e) => {
     addonReady = e.data.working !== false; addonVersion = e.data.version || ""; addonBroken = e.data.working === false;
     showAddon();
   }
+  if (e.data.type === "opened" && !e.data.ok && e.data.url) window.open(e.data.url, "_blank", "noopener");
   if (e.data.type === "started" && !e.data.ok)
     $("place").textContent = "The add-on couldn't open the hotel pages" + (e.data.details && e.data.details.error ? ` (${e.data.details.error})` : "") + ". Use the site links below.";
 });
@@ -569,14 +570,20 @@ async function loadSignins() {
     return `<div class="si-row">
       <span class="p-mono t-${esc(p.tone || "plain")}" aria-hidden="true">${esc(p.mono || "")}</span>
       <div class="si-main"><b>${esc(p.name)}</b><span class="si-state ${st[0]}">${esc(st[1])}</span>${reads ? "" : `<span class="si-note">Prices not read automatically yet</span>`}</div>
-      <a class="btn small${st[0] === "ok" ? "" : " dark"}" href="${esc(st[0] === "ok" ? p.site || p.login : p.login)}" target="_blank" rel="noopener">${st[0] === "ok" ? "Open" : "Sign in"}</a>
+      <a class="btn small${st[0] === "ok" ? "" : " dark"}" data-open href="${esc(st[0] === "ok" ? p.site || p.login : p.login)}" target="_blank" rel="noopener">${st[0] === "ok" ? "Open" : "Sign in"}</a>
     </div>`;
-  }).join("") + `<p class="note si-foot">Sign-ins belong to each browser — do this once on the iPad (Orion) and once on the PC (Chrome). Status updates when you open a page of that site.</p>`;
+  }).join("") + `<p class="note si-foot">Sign-ins belong to each browser — do this once on the iPad (Orion) and once on the PC (Chrome). Tick “Remember me” on each site and let your iPad save the password, so next time it's one tap. Status updates when you open a page of that site.</p>`;
+  // With the add-on, sign-in pages open as a tab in this browser, so the hotel's own app can't take over the link.
+  $("signins").querySelectorAll("a[data-open]").forEach((a) => a.onclick = (e) => {
+    if (!addonReady || !newer(addonVersion, "0.7.0")) return; // older add-on: normal link
+    e.preventDefault();
+    window.postMessage({ source: "hs-page", type: "open", url: a.href }, "*");
+  });
 }
 setInterval(() => { if (!document.hidden && !$("view-settings").hidden) loadSignins(); }, 8000);
 
 // ---------- Settings & updates ----------
-const ADDON_LATEST = "0.7.0";
+const ADDON_LATEST = "0.7.1";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
 $("gear").onclick = () => show("settings");
