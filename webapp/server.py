@@ -24,6 +24,7 @@ REPO = os.environ.get("UPDATE_REPO", "wood29/hotel-search")  # where one-tap upd
 TOKEN_PATH = os.path.join(os.path.dirname(DB_PATH), "github-token")
 TM_KEY_PATH = os.path.join(os.path.dirname(DB_PATH), "ticketmaster-key")
 EVENTS_CACHE = {}  # (lat, lon, start, end) -> (time, result)
+ACCOUNT_SEEN = {}  # site -> what the add-on last saw at the top of its pages (memory only, for tuning the sign-in checks)
 GOOGLE_KEY_PATH = os.path.join(os.path.dirname(DB_PATH), "google-key")
 FOOD_CACHE = {}  # (lat, lon) -> (time, result)
 # Hotel sites by web address (the add-on only says which site a page is from).
@@ -504,6 +505,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"id": row["id"], "created": row["created"], "params": json.loads(row["params"]), "results": out})
             if p == "/api/debug":
                 return self._send(200, DEBUG[-int(q.get("n", 120)):])
+            if p == "/api/account-seen":
+                return self._send(200, ACCOUNT_SEEN)
             if p == "/api/page":
                 # A saved hotel page as the add-on saw it (for fixing the readers when a site changes).
                 with db() as con:
@@ -663,6 +666,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not chain:
                     return self._send(200, {"ok": False})
                 a = readers.ACCOUNT[chain](str(body.get("text") or "")[:6000])
+                ACCOUNT_SEEN[chain] = {"t": time.time(), "site": site, "result": a["signedIn"], "head": str(body.get("text") or "")[:1500]}
+                if a["signedIn"] is None:
+                    with LOCK, db() as con:  # remember that we looked, even if we couldn't tell
+                        con.execute("INSERT INTO accounts (chain, signed_in, checked) VALUES (?,?,?) ON CONFLICT(chain) DO UPDATE SET checked=excluded.checked",
+                                    (chain, None, time.time()))
                 if a["signedIn"] is not None:
                     with LOCK, db() as con:
                         if chain == "Amex":  # Amex points are kept under their programme name

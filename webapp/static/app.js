@@ -565,6 +565,7 @@ async function loadSignins() {
     const fresh = a.checked && now - a.checked < 3600;
     const st = a.signedIn === true && fresh ? ["ok", `Signed in · checked ${ago(a.checked)}`]
       : a.signedIn === false && fresh ? ["no", "Signed out"]
+      : a.signedIn == null && fresh ? ["", `Seen ${ago(a.checked)} · couldn't tell yet`]
       : a.checked ? ["", `Not checked recently · last seen ${ago(a.checked)}`] : ["", "Not checked yet"];
     const reads = p.auto || ["Accor", "Radisson", "Amex"].includes(p.acct);
     return `<div class="si-row">
