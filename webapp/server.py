@@ -575,7 +575,7 @@ class Handler(BaseHTTPRequestHandler):
                 with LOCK, db() as con:
                     # A page that already finished is never turned back into "loading" or "took too long".
                     prev = con.execute("SELECT status FROM results WHERE search_id=? AND key=?", (sid, body["key"])).fetchone()
-                    if prev and prev["status"] in ("done", "empty", "none", "blocked") and body.get("status") in ("loading", "timeout"):
+                    if prev and prev["status"] in ("done", "empty", "none", "blocked", "missing") and body.get("status") in ("loading", "timeout"):
                         return self._send(200, {"ok": True, "kept": prev["status"]})
                     con.execute("""INSERT INTO results (search_id, key, chain, kind, status, payload, updated)
                                    VALUES (?,?,?,?,?,?,?)
@@ -644,7 +644,7 @@ class Handler(BaseHTTPRequestHandler):
                 reply = {"hotels": len(rd["hotels"]), "expected": rd["expected"], "blocked": rd["blocked"]}
                 if body.get("final") and body.get("searchId") and body.get("key"):
                     sid, key = int(body["searchId"]), str(body["key"])[:40]
-                    status = ("blocked" if rd["blocked"] else "done" if rd["hotels"]
+                    status = ("missing" if rd.get("missing") else "blocked" if rd["blocked"] else "done" if rd["hotels"]
                               else "none" if rd.get("noneFound") else "empty")
                     payload = {"hotels": rd["hotels"], "balance": rd.get("balance"), "signedIn": rd.get("signedIn"),
                                "tier": rd.get("tier"), "note": None if rd["hotels"] else text[:2500], "url": body.get("url")}

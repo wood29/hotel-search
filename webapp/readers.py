@@ -365,8 +365,14 @@ def attach_links(hotels, links):
     return hotels
 
 
+NOT_FOUND = re.compile(r"\b404\b|page (?:was )?not found|page you (?:are|were) looking for|Seite (?:wurde )?nicht gefunden|doesn't exist", re.I)
+
+
 def read_page(chain, text, links=None, nights=1):
     """Everything the NAS needs from one results page."""
+    if len(text) < 6000 and NOT_FOUND.search(text[:3000]) and not re.search(r"from destination|from your search|from central|Opens new tab", text):
+        # The site has no page for this city (e.g. Radisson has no hotels there): stop waiting straight away.
+        return {"blocked": True, "missing": True, "noneFound": False, "hotels": [], "expected": None, "signedIn": None, "balance": None, "tier": None}
     if blocked(text):
         return {"blocked": True, "noneFound": False, "hotels": [], "expected": None, "signedIn": None, "balance": None, "tier": None}
     fn = LISTS.get(chain)

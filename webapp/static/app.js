@@ -25,7 +25,7 @@ const P = Object.fromEntries(PROGRAMS.map((p) => [p.id, p]));
 P.Accor = P["ALL Accor"]; P.Radisson = P["Radisson Rewards"]; // chain name in results → its programme
 const SYM = { EUR: "€", GBP: "£", USD: "$", CHF: "CHF " };
 const money = (n, c) => (n == null ? "" : (SYM[c || "EUR"] || (c + " ")) + Math.round(n).toLocaleString(LOCALE));
-const STATUS = { waiting: "Waiting", loading: "Reading", done: "Done", empty: "Nothing read", none: "No hotels offered",
+const STATUS = { waiting: "Waiting", loading: "Reading", done: "Done", empty: "Nothing read", none: "No hotels offered", missing: "No hotels in this city",
                  timeout: "Took too long", blocked: "Site refused", manual: "Open to check" };
 
 // ---------- Views ----------
