@@ -48,7 +48,7 @@ const HotelUrls = (() => {
       { key: "ihg-cash", chain: "IHG", kind: "cash", url: ihgBase + "&qRtP=6CBARC", searchPath: "hotel-search", marker: "qRtP=6CBARC" },
       { key: "ihg-points", chain: "IHG", kind: "points", url: ihgBase + "&qRtP=IVANI", searchPath: "hotel-search", marker: "qRtP=IVANI" },
       { key: "accor", chain: "Accor", kind: "cash", url: accor, searchPath: "/hotels/" },
-      { key: "radisson", chain: "Radisson", kind: "cash", url: radisson, searchPath: "/destination/" },
+      { key: "radisson", chain: "Radisson", kind: "cash", url: radisson, searchPath: "/en-us/" } // also its "404-error" page, so a city without Radisson hotels finishes at once,
     ];
   }
 
