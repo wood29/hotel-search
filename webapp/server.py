@@ -664,6 +664,14 @@ class Handler(BaseHTTPRequestHandler):
                         hotel_locations([h["name"] for h in rd["hotels"] if h.get("name")], prm.get("city", ""),
                                         prm.get("country", ""), prm.get("lat"), prm.get("lon"))
                     reply["status"] = status
+                elif rd["hotels"] and body.get("searchId") and body.get("key"):
+                    # Keep the latest part-read page: if the tab never finishes (Orion pauses hidden tabs),
+                    # the hotels seen so far are shown instead of "took too long".
+                    with LOCK, db() as con:
+                        con.execute("""INSERT INTO pages (search_id, key, chain, text, links, updated) VALUES (?,?,?,?,?,?)
+                                       ON CONFLICT(search_id, key) DO UPDATE SET text=excluded.text, links=excluded.links,
+                                       updated=excluded.updated""", (int(body["searchId"]), str(body["key"])[:40], chain, text,
+                                                                    json.dumps(links)[:300000], time.time()))
                 return self._send(200, reply)
             if p == "/api/account-page":
                 site = str(body.get("site", "")).lower()
