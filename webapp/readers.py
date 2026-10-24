@@ -370,7 +370,7 @@ NOT_FOUND = re.compile(r"\b404\b|page (?:was )?not found|page you (?:are|were) l
 
 def read_page(chain, text, links=None, nights=1):
     """Everything the NAS needs from one results page."""
-    if len(text) < 6000 and NOT_FOUND.search(text[:3000]) and not re.search(r"from destination|from your search|from central|Opens new tab", text):
+    if len(text) < 30000 and NOT_FOUND.search(text) and not re.search(r"from destination|from your search|from central|Opens new tab", text):
         # The site has no page for this city (e.g. Radisson has no hotels there): stop waiting straight away.
         return {"blocked": True, "missing": True, "noneFound": False, "hotels": [], "expected": None, "signedIn": None, "balance": None, "tier": None}
     if blocked(text):
