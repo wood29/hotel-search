@@ -299,7 +299,8 @@ def account_accor(text):
 def account_radisson(text):
     # The page header shows "SIGN IN" next to "MY RESERVATIONS" when you're signed out.
     head = text[:4000]
-    if re.search(r"\b(SIGN IN|Sign in|Log in|JOIN NOW|Join now)\b", head):
+    # Only a header button counts ("SIGN IN" on a line of its own), not a "Sign in to see member rates" banner.
+    if re.search(r"^\s*(SIGN IN|Sign in|Log in|JOIN NOW|Join now)\s*$", head[:1500], re.M):
         return {"signedIn": False, "balance": None, "tier": None}
     if re.search(r"MY RESERVATIONS|My account|Hi,? [A-Z]", head):
         return {"signedIn": True, "balance": None, "tier": None}

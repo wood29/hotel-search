@@ -24,6 +24,7 @@ REPO = os.environ.get("UPDATE_REPO", "wood29/hotel-search")  # where one-tap upd
 TOKEN_PATH = os.path.join(os.path.dirname(DB_PATH), "github-token")
 TM_KEY_PATH = os.path.join(os.path.dirname(DB_PATH), "ticketmaster-key")
 EVENTS_CACHE = {}  # (lat, lon, start, end) -> (time, result)
+OUT_STRIKE = {}  # chain -> when a site that was signed in first looked signed out
 ACCOUNT_SEEN = {}  # site -> what the add-on last saw at the top of its pages (memory only, for tuning the sign-in checks)
 GOOGLE_KEY_PATH = os.path.join(os.path.dirname(DB_PATH), "google-key")
 FOOD_CACHE = {}  # (lat, lon) -> (time, result)
@@ -107,6 +108,16 @@ PROGRAM_OF = {"Accor": "ALL Accor", "Radisson": "Radisson Rewards", "Meliá": "M
 
 def record_account(con, chain, signed_in, balance, tier):
     program = PROGRAM_OF.get(chain, chain)
+    if signed_in is False:
+        # One "signed out" reading after a "signed in" one is often a page that merely shows a sign-in banner,
+        # so it takes two in a row (at least a minute apart) to switch a site to signed out.
+        row = con.execute("SELECT signed_in FROM accounts WHERE chain=?", (chain,)).fetchone()
+        first = OUT_STRIKE.get(chain)
+        if row and row["signed_in"] == 1 and (not first or time.time() - first < 60):
+            OUT_STRIKE.setdefault(chain, time.time())
+            return
+    if signed_in:
+        OUT_STRIKE.pop(chain, None)
     if signed_in is not None:
         con.execute("INSERT INTO accounts (chain, signed_in, checked) VALUES (?,?,?) "
                     "ON CONFLICT(chain) DO UPDATE SET signed_in=excluded.signed_in, checked=excluded.checked",
@@ -680,6 +691,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": False})
                 a = readers.ACCOUNT[chain](str(body.get("text") or "")[:6000])
                 ACCOUNT_SEEN[chain] = {"t": time.time(), "site": site, "result": a["signedIn"], "head": str(body.get("text") or "")[:1500]}
+                if a["signedIn"] is False:  # keep the last "signed out" page too, to find false alarms
+                    ACCOUNT_SEEN[chain + " (signed out)"] = ACCOUNT_SEEN[chain]
                 if a["signedIn"] is None:
                     with LOCK, db() as con:  # remember that we looked, even if we couldn't tell
                         con.execute("INSERT INTO accounts (chain, signed_in, checked) VALUES (?,?,?) ON CONFLICT(chain) DO UPDATE SET checked=excluded.checked",

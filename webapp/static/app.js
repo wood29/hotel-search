@@ -562,7 +562,7 @@ async function loadSignins() {
   const now = Date.now() / 1000;
   $("signins").innerHTML = PROGRAMS.filter((p) => p.login).map((p) => {
     const a = (d.accounts || {})[p.acct] || {};
-    const fresh = a.checked && now - a.checked < 3600;
+    const fresh = a.checked && now - a.checked < (a.signedIn ? 14 * 86400 : 3600); // sign-ins with "Remember me" last weeks
     const st = a.signedIn === true && fresh ? ["ok", `Signed in · checked ${ago(a.checked)}`]
       : a.signedIn === false && fresh ? ["no", "Signed out"]
       : a.signedIn == null && fresh ? ["", `Seen ${ago(a.checked)} · couldn't tell yet`]
